@@ -12,7 +12,7 @@ debug = True
 
 class MarkUp:
     _sticks = None  # list of 3 sticks reverse ordered by distance to golfer (increasing h): [(idx, (center,size,angle))]
-    _markup = None  # high,low,vert, start_point, aim_line_angle, cross_hv, cross_lv
+    _markup = None  # top,low,vert, start_point, aim_line_angle, cross_hv, cross_lv
 
     def __init__(self, img):
 
@@ -34,9 +34,9 @@ class MarkUp:
 
     def draw(self, image):
         # draw_markup
-        cv.line(image, self._markup['pleft'], self._markup['pright'], (0, 50, 0), 1)  # aiming line
-        cv.line(image, self._markup['cross_hv'], self._markup['cross_lv'], (0, 50, 0), 2)
-        cv.circle(image, self._markup['start_point'], 3, (0, 50, 0), 1)  # starting cross
+        cv.line(image, self._markup['pleft'], self._markup['pright'], (0, 0, 50), 1)  # aiming line
+        cv.line(image, self._markup['cross_hv'], self._markup['cross_lv'], (0, 0, 50), 2)
+        cv.circle(image, self._markup['start_point'], 3, (0, 0, 50), 1)  # starting cross
         return image
 
     def get_start_point(self):
@@ -60,8 +60,8 @@ def _get_sticks(img):
         Util.show_img(blur, "_median_blur")
 
     low = (0, 0, 0)
-    high = (0, 255, 0)
-    mask_green = cv.inRange(blur, np.array(low, dtype="uint8"), np.array(high, dtype="uint8"))
+    top = (0, 255, 0)
+    mask_green = cv.inRange(blur, np.array(low, dtype="uint8"), np.array(top, dtype="uint8"))
     if debug:
         Util.show_img(mask_green, "mask_green")
 
@@ -92,20 +92,20 @@ def _get_markup(sticks_lst):
     _markup = {}
 
     # sticks (2 horizontal, 1 vertical)
-    for mark, rect_desc in zip(['high', 'low', 'vert'], sticks_lst):
+    for mark, rect_desc in zip(['top', 'low', 'vert'], sticks_lst):
         p1, p2 = Util.rect_2points(rect_desc[1])
         angle = Util.get_angle(p1, p2)
         idx = rect_desc[0]
         _markup[mark] = (p1, p2, angle, idx)
 
     # starting point (between cross-points of vertical stick with each horizontal stick
-    cross_hv = Util.line_intersection((_markup['high'][0], _markup['high'][1]), (_markup['vert'][0], _markup['vert'][1]))
+    cross_hv = Util.line_intersection((_markup['top'][0], _markup['top'][1]), (_markup['vert'][0], _markup['vert'][1]))
     cross_lv = Util.line_intersection((_markup['low'][0], _markup['low'][1]), (_markup['vert'][0], _markup['vert'][1]))
     start_point = Util.middle(cross_hv, cross_lv)
 
-    # aim_line: angle is average (high,low) angle, go through start_point
+    # aim_line: angle is average (top,low) angle, go through start_point
     # (pleft, pright) - points where aim_line is crossing left and right borders
-    aim_line_angle = (_markup['high'][2] + _markup['low'][2]) / 2.
+    aim_line_angle = (_markup['top'][2] + _markup['low'][2]) / 2.
     dleft_w, dright_w = -start_point[0], 1920 - start_point[0]  # dw to left and right borders
     dleft_h = dleft_w * np.tan(np.deg2rad(aim_line_angle))
     dright_h = dright_w * np.tan(np.deg2rad(aim_line_angle))
@@ -140,7 +140,7 @@ import glob
 
 def main():
     results={}
-    for fname in sorted( glob.glob('img/tst_sticks/8.png') ):
+    for fname in sorted( glob.glob('img/tst_sticks/7.png') ):
         # img = cv.imread(f"{inp_fname}.png")
         img = cv.imread(fname)
 
@@ -151,8 +151,8 @@ def main():
         else:
             results[fname] = 'OK'
 
-        # mark_up.draw_markup(img)
-        # Util.show_img(img, "out_img")
+        mark_up.draw(img)
+        Util.show_img(img, "out_img")
 
     err_files = [(r,results[r]) for r in results if results[r]!='OK']
     print(f"Ok - {len(results)-len(err_files)}, err - {len(err_files)} of {len(results)}")
@@ -180,8 +180,8 @@ if __name__ == '__main__':
     # blur = cv.medianBlur(img, 11)
     #
     # low = (0, 0, 0)
-    # high = (255, 0, 255)
-    # mask_green = cv.inRange(blur, np.array(low, dtype="uint8"), np.array(high, dtype="uint8"))
+    # top = (255, 0, 255)
+    # mask_green = cv.inRange(blur, np.array(low, dtype="uint8"), np.array(top, dtype="uint8"))
     #
     # mask = cv.dilate(mask_green, np.ones((5, 5), np.uint8), iterations=3)
     #
@@ -190,7 +190,7 @@ if __name__ == '__main__':
     # long_rect_lst = [(idx, rect, rect_2points(rect)) for idx, rect in rect_lst if max(rect[1]) / min(rect[1]) > 10]
     #
     # rect_sorted = sorted(long_rect_lst, key=lambda r: r[1][0][1])  # sort by increasing center_h
-    # sticks_rect = {'high': rect_sorted[0], 'low': rect_sorted[1], 'vert': rect_sorted[2]}
+    # sticks_rect = {'top': rect_sorted[0], 'low': rect_sorted[1], 'vert': rect_sorted[2]}
     #
     # start_point, aim_line_angle = field_markup(img, sticks_rect)
     # if debug:
@@ -257,7 +257,7 @@ if __name__ == '__main__':
     #     print(f"sorted:")
     #     for r in rect_sorted: print(f"idx={r[0]} c={r[1][0]} size={r[1][1]} and={r[1][2]}")
     #
-    #     return {'high': rect_2_stick(rect_sorted[0]),
+    #     return {'top': rect_2_stick(rect_sorted[0]),
     #             'low': rect_2_stick(rect_sorted[1]),
     #             'vert': rect_2_stick(rect_sorted[2])}
     #

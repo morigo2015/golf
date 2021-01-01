@@ -6,13 +6,13 @@ import time
 import numpy as np
 import cv2 as cv
 
-from markup import MarkUp
+from markup_old import MarkUp
 
-# video_file_name = 'video/out2.avi'
+# inp_source_name = 'video/out2.avi'
 video_file_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-# video_file_name = 'rejected.avi'
-# video_file_name = 'noise.avi'
-# video_file_name = 'short2.mp4'
+# inp_source_name = 'rejected.avi'
+# inp_source_name = 'noise.avi'
+# inp_source_name = 'short2.mp4'
 
 frame_mode_initial = True
 # frame_mode_initial = False

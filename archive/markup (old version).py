@@ -33,7 +33,7 @@ class MarkUp:
             self._show_markup()
 
     def draw(self, image):
-        # draw
+        # draw_markup
         cv.line(image, self._markup['pleft'], self._markup['pright'], (0, 0, 50), 1)  # aiming line
         cv.line(image, self._markup['cross_hv'], self._markup['cross_lv'], (0, 0, 50), 2)
         cv.circle(image, self._markup['start_point'], 3, (0, 0, 50), 1)  # starting cross
@@ -48,7 +48,7 @@ class MarkUp:
     def _show_markup(self):
         img = self._start_img.copy()
         self.draw(img)
-        Util.show_img(img, "draw markup")
+        Util.show_img(img, "draw_markup markup")
 
 
 def _get_sticks(img):

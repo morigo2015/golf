@@ -4,8 +4,8 @@
 import time
 import numpy as np
 import cv2 as cv
-# video_file_name = 'long test.mp4'
-# video_file_name = 'tst.mp4'
+# inp_source_name = 'long test.mp4'
+# inp_source_name = 'tst.mp4'
 video_file_name = 'mid.mp4'
 
 frame_mode_initial = False

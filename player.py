@@ -8,52 +8,44 @@ import numpy as np
 import cv2 as cv
 
 from markup import MarkUp
+from util import FrameStream
 
-# video_file_name = 'output.avi'
-# video_file_name = 'rejected.avi'
-# video_file_name = 'noise.avi'
-# video_file_name = 'short2.mp4'
-video_file_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-# video_file_name = 'video/out2.avi'
+# inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
+inp_source_name = 'video/out2-ball-5.avi'
 
-write_mode = True
-# write_mode = False
+# write_mode = True
+write_mode = False
 
-# markup_mode = True
-markup_mode = False
+markup_mode = True
+# markup_mode = False
 
-out_file_name = 'video/out2.avi'
-frame_mode_initial = False
-# frame_mode_initial = True
+# frame_mode_initial = False
+frame_mode_initial = True
+
 delay_initial = 1
 delay_multiplier = 60
+out_file_name = 'video/out2.avi'
+
+
 
 def main():
     frame_mode = frame_mode_initial
     delay = delay_initial
-    cap = cv.VideoCapture(video_file_name)
-    if not cap.isOpened():
-        print("Cannot open camera")
-        exit()
-    frame_cnt = 0
+    fs = FrameStream(inp_source_name)
 
-    if write_mode:
-        fourcc = cv.VideoWriter_fourcc(*'XVID')
-        out = cv.VideoWriter(out_file_name, fourcc, 20.0, (1920, 1080))
-
-    start_time = time.time()
+    fourcc = cv.VideoWriter_fourcc(*'XVID')
+    out = cv.VideoWriter(out_file_name, fourcc, 20.0, (1920, 1080)) if write_mode else None
 
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Can't receive frame (stream end?). Exiting ...")
+        frame, frame_name, frame_cnt = fs.next_frame()
+        if frame is None:
             break
-        frame_cnt = frame_cnt + 1
 
-        out_frame = process_frame(frame, frame_cnt)
+        out_frame = process_frame(frame, frame_name, frame_cnt)
+
         cv.putText(out_frame, f"D:{delay / delay_multiplier:.0f}/{frame_cnt}", (5, 12),
                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv.imshow('frame', out_frame)
+        cv.imshow(f'out_frame', out_frame)
 
         if write_mode:
             out.write(out_frame)
@@ -77,29 +69,56 @@ def main():
             frame_mode = False
             print(f"{delay=}")
 
-    end_time = time.time()
-    print(
-        f"Finish. Duration={end_time - start_time:.0f} sec, {frame_cnt=} fps={frame_cnt / (end_time - start_time):.1f}")
+    process_end_of_stream(frame_cnt)
 
-    cap.release()
+    print(
+        f"Finish. Duration={fs.total_time():.0f} sec, {fs.frame_cnt} frames,  fps={fs.fps():.1f} f/s")
+
+
+    del fs
     if write_mode:
         out.release()
     cv.destroyAllWindows()
 
 
-markup: MarkUp
+# ---------------------------------------------------------------------------------------------------------------
 
+markup = None
 
-def process_frame(frame, frame_cnt):
+from util import Util
+
+def process_frame(frame, frame_name, frame_cnt):
+    # return frame # vanilla player
+
     global markup
     if markup_mode:
-        if frame_cnt == 1:
-            markup = MarkUp(frame)
+        # print(f"{frame_cnt=}")
+        if markup is None:
+            markup = MarkUp(frame, frame_name)
+            if markup is not None:
+                print(f"markup set on {frame_cnt} in {frame_name}.\n{markup.markup=}")
+                # markup.show_markup()
+            else:
+                print(f"markup is not set of first frame!")
+                exit()
         else:
-            markup.draw(frame)
-
+            start_area = markup.start_area
+            if start_area is None:
+                print(f"start area is not found!!")
+                exit()
+            # if 1 < frame_cnt < 234:
+            #     return frame
+            got_ball = start_area.got_ball(frame)
+            if got_ball:
+                start_area.draw_ball(frame)
+            markup.draw_markup(frame)
+            markup.start_area.draw_start_area(frame)
     return frame
 
+def process_end_of_stream(frame_cnt):
+    global markup
+    if markup is not None:
+        markup.start_area.print_ball_stat()
 
 if __name__ == '__main__':
     main()

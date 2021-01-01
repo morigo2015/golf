@@ -53,7 +53,7 @@ class MarkUp:
 
 
     def draw(self, image):
-        # draw
+        # draw_markup
         cv.line(image, self.p1, self.p2, (0, 255, 0), 1)  # aiming line
         hv = int(self._cross_hv[0]), int(self._cross_hv[1])
         lv = int(self._cross_lv[0]), int(self._cross_lv[1])
