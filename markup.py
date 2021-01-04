@@ -9,9 +9,8 @@ from util import Util, FrameStream
 from start_area import StartArea
 
 markup_errors = "img/err"
-debug = True
-
-# debug = False
+# debug = True
+debug = False
 
 
 class MarkUp:

@@ -11,21 +11,21 @@ from markup import MarkUp
 from util import FrameStream
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-inp_source_name = 'video/out2-ball-5.avi'
+# inp_source_name = 'video/phone-2(60).mp4' #     out2.avi'
+inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
-# write_mode = True
-write_mode = False
+frame_mode_initial = False
+# frame_mode_initial = True
 
-markup_mode = True
-# markup_mode = False
+# markup_mode = True
+markup_mode = False # if inp_source_name[0:4] == 'rtsp' else True
 
-# frame_mode_initial = False
-frame_mode_initial = True
+write_mode = True if inp_source_name[0:4] == 'rtsp' else False
+# write_mode = False
 
 delay_initial = 1
 delay_multiplier = 60
 out_file_name = 'video/out2.avi'
-
 
 
 def main():
@@ -74,7 +74,6 @@ def main():
     print(
         f"Finish. Duration={fs.total_time():.0f} sec, {fs.frame_cnt} frames,  fps={fs.fps():.1f} f/s")
 
-
     del fs
     if write_mode:
         out.release()
@@ -86,6 +85,7 @@ def main():
 markup = None
 
 from util import Util
+
 
 def process_frame(frame, frame_name, frame_cnt):
     # return frame # vanilla player
@@ -115,10 +115,12 @@ def process_frame(frame, frame_name, frame_cnt):
             markup.start_area.draw_start_area(frame)
     return frame
 
+
 def process_end_of_stream(frame_cnt):
     global markup
     if markup is not None:
         markup.start_area.print_ball_stat()
+
 
 if __name__ == '__main__':
     main()

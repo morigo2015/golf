@@ -9,6 +9,8 @@ from util import Util, FrameStream
 
 markup_errors = "img/err"
 debug = True
+
+
 # debug = False
 
 
@@ -84,7 +86,11 @@ class StartArea:
         cv.ellipse(img, (self.ball_center, self.ball_axis, self.ball_angle), color)
 
     def print_ball_stat(self):
-        print("ball search stats:")
-        for k in self.ball_stat[0]:
-            vals = [val[k] for val in self.ball_stat]
-            print(f"{k}:  {min(vals):.2f} - {max(vals):.2f}")
+        if not len(self.ball_stat):
+            print("No balls got")
+            return
+        else:
+            print("ball search stats:")
+            for k in self.ball_stat[0]:
+                vals = [val[k] for val in self.ball_stat]
+                print(f"{k}:  {min(vals):.2f} - {max(vals):.2f}")
