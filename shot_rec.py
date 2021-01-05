@@ -3,38 +3,45 @@
 
 import cv2 as cv
 
-from markup import MarkUp
 from util import Util
+from collections import deque
 
 debug = True
+
+
 # debug = False
 
-inp_fname = "img/tst/tst-img-1"
+class FrameDescriptor:
+    def __init__(self, frame, frame_cnt):
+        self.frame = frame.copy()
+        self.frame_cnt = frame_cnt
 
-class ShotRec:
-    def __init__(self, markup: MarkUp):
-        self.markup = markup
-        self.start_point = markup.get_start_point()  # (w,h)
-        self.start_area = markup.get_start_area()  # (l,r,u,d)
-        self.ball_status = 'unknown'  # 'unknown' 'present', 'absent'
 
-    def input_frame(self, frame):  # eat input frames
-        l, r, u, d = self.start_area
-        ball_area = frame[l:r, u:d]
-        if debug:
-            Util.show_img(ball_area, "ball_area")
-        
-    def draw_shot_status(self, frame):  # add shot status info to frame
-        return frame
+class FrameBuff:
+    buff_size = 100
+    fd_buffer = deque()
+
+    @classmethod
+    def save_bg(cls,frame):
+        cls.bg = frame
+
+    @classmethod
+    def add_frame(cls,frame, frame_cnt):
+        fd = FrameDescriptor(frame, frame_cnt)
+        cls.fd_buffer.append(fd)
+
+    @classmethod
+    def next_frame(cls, frame, frame_cnt):
+        if frame_cnt == 1:
+            cls.save_bg(frame)
+
+        if len(cls.fd_buffer) < cls.buff_size:
+            cls.add_frame(frame,frame_cnt)
+
 
 
 def main():
-    img = cv.imread(f"{inp_fname}.png")
-    mark_up = MarkUp(img)
-    mark_up.draw(img)
-    Util.show_img(img, "out_img")
-    shot_rec = ShotRec(mark_up)
-    shot_rec.input_frame(img)
+    pass
 
 
 if __name__ == '__main__':
