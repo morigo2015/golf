@@ -1,20 +1,19 @@
 from collections import deque
 import numpy as np
+import math
 import cv2 as cv
+from util import Util
 
 
 class BgSubtractor:
-    BG_HISTORY_LENGTH = 30 # 15  # how many frames a ball has to be found and still for detection
     background = None
-    mask_history = deque([])
-
     cv_backSub = None
 
     @classmethod
     def next_frame(cls, frame):
-        # if cls.cv_backSub is None:
-        #     cls.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
-        # return cls.cv_backSub.apply(frame)
+        if cls.cv_backSub is None:
+            cls.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
+        return cls.cv_backSub.apply(frame)
 
         if cls.background is None:  # first frame - init bg
             cls.background = cls.blur_image(frame)
@@ -22,26 +21,12 @@ class BgSubtractor:
         blur_img = cls.blur_image(frame)
         diff = cv.absdiff(cls.background, blur_img)
         mask = cv.threshold(diff, 50, 255, cv.THRESH_BINARY)[1]
-        # mask = cv.dilate(mask, None, iterations=2)
-        cls.mask_history.append(mask)
-
-        if len(cls.mask_history) < cls.BG_HISTORY_LENGTH:  # too few frames in history to make decision
-            return None
-        else:  # history is long enough
-            # stock all masks together and look through them
-            cls.mask_history.popleft()
-            # and_mask = cls.mask_history[-1]
-            or_mask = cls.mask_history[-1]
-            # for i in range(len(cls.mask_history)-1):
-            #     xor_mask = cv.bitwise_xor(cls.mask_history[i], cls.mask_history[i+1])
-            #     cv.imshow("xor mask", xor_mask)
-            #     or_mask = cv.bitwise_or(or_mask,xor_mask)
-            return or_mask
+        return mask
 
     @staticmethod
     def blur_image(img):
         # img = cv.medianBlur(img, 3)
-        img = cv.blur(img, (3,3))
+        img = cv.blur(img, (3, 3))
         gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
         # gray = cv.blur(gray, (3,3))
         # gray = cv.medianBlur(gray, 3)
@@ -49,23 +34,67 @@ class BgSubtractor:
 
 
 class BallWatch:
-    # prev = None
+    BALL_AVG_AREA = 2000  # 2000 # примерно площадь мяча (на среднем расстоянии)
+
+    calibrate_info = None
+    calibrate_center_lst = []
+
     @classmethod
     def impact_found(cls, frame, frame_cnt):
         # return True  # if impact found (ball removed from ready position)
+        cls.calibrate(frame, frame_cnt)
+
+        # if cls.calibrate_info is None:
+        #     cls.calibrate(frame, frame_cnt)
+        #     return False
+
+
+        # print(f"ball starting area found at: {frame_cnt}")
+        # cv.waitKey(0)
+        # exit(0)
+
+    @classmethod
+    def calibrate(cls, frame, frame_cnt):
+        cls.calibrate_info = None # ***********************
         mask = BgSubtractor.next_frame(frame)
-        if mask is None:
-            return
-        print(f"{frame_cnt=} {mask.mean()}")
+        # if mask is None:
+        #     return
+        # print(f"{frame_cnt=} {mask.mean()}")
+        mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, np.ones((5,5),np.uint8))
         cv.imshow(f"mask", mask)
-        # if cls.prev is None:
-        #     cls.prev = mask.copy()
-        # else:
-            # xor_mask = cv.bitwise_xor(cls.prev,mask)
-            # cv.imshow("xor_mask",cls.prev)
-            # cls.prev = mask.copy()
+        ball_contour = cls.get_ball(mask)
+        if ball_contour is None:
+            return
+        M = cv.moments(ball_contour)
+        cx = int(M['m10'] / M['m00'])
+        cy = int(M['m01'] / M['m00'])
+        cls.calibrate_center_lst.append((cx,cy))
+        calibr_cx, calibr_cy = np.mean(cls.calibrate_center_lst, axis=0)
+        if abs(calibr_cx - cx)>5 or abs(calibr_cy-cy)>5:
+            cls.calibrate_center_lst=[]
+            return
+        if len(cls.calibrate_center_lst)==4:
+            # r = ((cv.contourArea(ball_contour)) / math.pi) ** 0.5
+            cls.calibrate_info = ball_contour  # add more info for ball area here
+            print(f"calibrate. {frame_cnt=}") # area = {cv.contourArea(ball_contour)}
+            x, y, w, h = (cv.boundingRect(cls.calibrate_info))
+            cv.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv.imshow(f"calibrate info {frame_cnt=}",frame)
 
+    @classmethod
+    def get_ball(cls, mask):
+        contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        ball_cont_lst = [c for c in contours if cls.BALL_AVG_AREA * 0.5 < cv.contourArea(c) < cls.BALL_AVG_AREA * 2]
+        if len(ball_cont_lst) != 1:
+            return None
+        cont = ball_cont_lst[0]
 
+        hull = cv.convexHull(cont)
+        convex_ratio = cv.contourArea(cont) / cv.contourArea(hull)
+        if not (convex_ratio > 0.95):
+            # print(f"not convex contour. ratio={convex_ratio}")
+            return None  # non-convex contour
+        return cont
 
 
 class FrameStore:
@@ -88,6 +117,7 @@ class ShotFinder:
     @classmethod
     def next_frame(cls, frame, frame_cnt):  # None or shot_descr
         if BallWatch.impact_found(frame, frame_cnt):
+            print(f"Impact found!! at frame {frame_cnt}")
             cls.impact_cnt = frame_cnt
         if cls.impact_cnt is None:  # impact not found yet
             return None
