@@ -98,6 +98,13 @@ class Util:
         elif ch == ord('q'):
             exit(0)
 
+    @staticmethod
+    def area_2_radius( area ):
+        return ( area / math.pi) ** 0.5
+
+    @staticmethod
+    def radius_to_area( radius ):
+        return math.pi * radius * radius
 
 class FrameStream:
     def __init__(self, source_path):

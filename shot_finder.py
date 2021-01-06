@@ -12,28 +12,35 @@ class ShotFinder:
     FRAMES_BEFORE_IMPACT = 100
     FRAMES_AFTER_IMPACT = 50
 
-    ball_cont = None
+    ball_desc = None
+    ball_seek_param = None
     ball_center_lst = []
     impact_cnt = None
-    state = 'shot_complete'  # 'shot_complete' -> 'ball_found' -> 'impact_started' -> 'shot_complete'
+    state = 'shot_complete'  # 'shot_complete' -> 'is_ball_found' -> 'impact_started' -> 'shot_complete'
+    background_subtr, bg_frame = None, None
 
     # поток кадров --> shot_descriptor (frame_lst, impact_cnt, ball_spot)
     @classmethod
     def next_frame(cls, frame, frame_cnt):  # None or shot_descr
         FrameStore.store_frame(frame, frame_cnt)
-        if debug:
-            print(f"{frame_cnt=} {cls.state=}")
+        # if debug:
+        #     print(f"{frame_cnt=} {cls.state=}")
+        if frame_cnt == 1:  # init bg
+            cls.background_subtr = cv.createBackgroundSubtractorMOG2(varThreshold=140)
+            cls.bg_frame = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 
         if cls.state == 'shot_complete':
-            cls.ball_cont = cls.find_still_ball(frame, frame_cnt)
-            if cls.ball_cont is not None:
-                cls.state = 'ball_found'
+            if cls.is_ball_found(frame, frame_cnt):
+                if debug:
+                    print(f"{frame_cnt=}  ball_foudnd set")
+                cls.state = 'is_ball_found'
             return None
 
-        if cls.state == 'ball_found':
-            cls.impact_cnt = cls.ball_removed(frame, frame_cnt)
-            if cls.impact_cnt:
-                print(f"Impact found!! at frame {cls.impact_cnt}")
+        if cls.state == 'is_ball_found':
+            if cls.is_ball_removed(frame, frame_cnt):
+                cls.impact_cnt = frame_cnt
+                if debug:
+                    print(f"{frame_cnt=}  Impact found!!")
                 cls.state = 'impact_started'
             return None
 
@@ -43,24 +50,28 @@ class ShotFinder:
             # last frame of the shot
             shot_desc = (FrameStore.restore_last_frames(cls.FRAMES_BEFORE_IMPACT + cls.FRAMES_AFTER_IMPACT),
                          cls.FRAMES_BEFORE_IMPACT)
+            if debug:
+                print(f"************************** shot complete  {cls.ball_desc[4]} - {cls.impact_cnt} - {frame_cnt}")
+                # Util.show_img(frame, f"{frame_cnt=} found ")
             cls.impact_cnt = None
             cls.state = 'shot_complete'
             return shot_desc
 
-    @staticmethod
-    def ball_removed(frame, frame_cnt):
-        # return frame_cnt if ball removed from his place else None
-        return 1  # None
-
     @classmethod
-    def find_still_ball(cls, frame, frame_cnt):
-        # return still ball contour and set ball_cont else None
-        mask = BgSubtractor.next_frame(frame)
-        mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-        # cv.imshow(f"mask", mask)
+    def is_ball_found(cls, frame, frame_cnt):
+        # return still ball contour and set ball_desc else None
+        fg_mask = cls.background_subtr.apply(frame)
+        if cls.ball_seek_param:
+            ball_seek_mask = cls.ball_seek_param[0]
+            fg_mask = cv.bitwise_and(fg_mask, fg_mask, mask=ball_seek_mask)
+            # cv.imshow("ball seek mask", ball_seek_mask)
+        mask = cv.morphologyEx(fg_mask, cv.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        if debug:
+            cv.imshow(f"frame mask", mask)
+
         ball_contour = cls.get_ball_cont(mask)
         if ball_contour is None:
-            return None
+            return False
         # ball found.
 
         # check if all balls in list are on the same place for 5 frames
@@ -68,30 +79,54 @@ class ShotFinder:
         ball_center = int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])
         cls.ball_center_lst.append(ball_center)
         if max(np.std(cls.ball_center_lst, axis=0) > 5):
+            # if debug:
+            #     print(f"is_ball_found: drop list {cls.ball_center_lst}")
             # deviate more than 5 pixels
             cls.ball_center_lst = []  # drop the list of balls
-            return None
+            return False
         # all balls in list are on the same place
 
-        if len(cls.ball_center_lst) < 5:
-            return None
+        if len(cls.ball_center_lst) < 4:
+            return False
         # ball is on the same place long enough
 
         # r = ((cv.contourArea(ball_contour)) / math.pi) ** 0.5
-        cls.ball_cont = ball_contour
         cls.ball_center_lst = []
+        # x, y, w, h = (cv.boundingRect(ball_contour))
+
+        ball_mask = np.zeros(frame.shape[0:2], np.uint8)
+        ball_mask = cv.drawContours(ball_mask, [ball_contour], -1, 255, cv.FILLED)
+        bg_ball_mean = cv.mean(cls.bg_frame, mask=ball_mask)
+        found_ball_mean = cv.mean(cv.cvtColor(frame, cv.COLOR_BGR2HSV), mask=ball_mask)
+        cls.ball_desc = (ball_contour, ball_mask, bg_ball_mean[0], found_ball_mean[0], frame_cnt)
+
+        x, y, w, h = cv.boundingRect(ball_contour)
+        if cls.ball_seek_param is None:  # it's first search, store info about start_area for future searches
+            ball_seek_mask = np.zeros(frame.shape[0:2], np.uint8)
+            p1 = max(0, x - 7 * w), max(0, y - 2 * h)
+            p2 = min(1920, x + 8 * w), min(1080, y + 3 * h)
+            ball_seek_mask = cv.rectangle(ball_seek_mask, p1, p2, 255, cv.FILLED)
+            cls.ball_seek_param = (ball_seek_mask, cv.contourArea(ball_contour), ball_contour)
+            frame_masked = cv.bitwise_and(frame, frame, mask=ball_seek_mask)
+            # Util.show_img(frame_masked, "frame masked by ball seek mask")
+
         if debug:
-            print(f"still ball found {frame_cnt=}")  # area = {cv.contourArea(ball_contour)}
-            x, y, w, h = (cv.boundingRect(cls.ball_cont))
+            print(f"still ball found {frame_cnt=}, {bg_ball_mean=}")  # area = {cv.contourArea(ball_contour)}
             cv.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            Util.show_img(frame, f"still ball info {frame_cnt=}")
-        return ball_contour
+            masked_frame = cv.bitwise_and(frame, frame, mask=ball_mask)
+            # Util.show_img(masked_frame, f"{frame_cnt=} still ball masked frame ")
+
+        return True
 
     @classmethod
     def get_ball_cont(cls, mask):
         # if mask contains a ball return it's contour else None
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        ball_cont_lst = [c for c in contours if cls.BALL_AVG_AREA * 0.5 < cv.contourArea(c) < cls.BALL_AVG_AREA * 2]
+        if cls.ball_seek_param:
+            min_area, max_area = cls.ball_seek_param[1] * 0.5, cls.ball_seek_param[1] * 1.5
+        else:
+            min_area, max_area = cls.BALL_AVG_AREA * 0.5, cls.BALL_AVG_AREA * 2
+        ball_cont_lst = [c for c in contours if min_area < cv.contourArea(c) < max_area]
         if len(ball_cont_lst) != 1:
             return None
         cont = ball_cont_lst[0]
@@ -101,35 +136,59 @@ class ShotFinder:
         if not (convex_ratio > 0.95):
             # print(f"not convex contour. ratio={convex_ratio}")
             return None  # non-convex contour
+
+        if cls.ball_seek_param:
+            first_ball_cont = cls.ball_seek_param[2]
+            match_ratio = cv.matchShapes(cont,first_ball_cont,1,0.0)
+            if not (match_ratio < 0.2):
+                return None
+            # matchs = [cv.matchShapes(cont,first_ball_cont,method,0.0) for method in [1,2,3]]
+            # print(f" get ball match: {matchs[0]=:.02f} {matchs[1]=:.02f}{matchs[2]=:.02f}")
+
         return cont
 
-
-class BgSubtractor:
-    background = None
-    cv_backSub = None
-
     @classmethod
-    def next_frame(cls, frame):
-        if cls.cv_backSub is None:
-            cls.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
-        return cls.cv_backSub.apply(frame)
+    def is_ball_removed(cls, frame, frame_cnt):
+        # return frame_cnt if ball removed from his place else None
+        _, ball_mask, bg_ball_mean, found_ball_mean, _ = cls.ball_desc
+        cur_ball_mean = cv.mean(cv.cvtColor(frame, cv.COLOR_BGR2HSV), mask=ball_mask)[0]
+        # if debug:
+        #     print(f"{frame_cnt=} is_ball_removed  ::: {bg_ball_mean=} {cur_ball_mean=} {found_ball_mean=}")
+        if abs(cur_ball_mean - bg_ball_mean) < 10: # abs(cur_ball_mean - found_ball_mean):
+            masked_frame = cv.bitwise_and(frame, frame, mask=ball_mask)
+            # Util.show_img(masked_frame, f"{frame_cnt=} impact masked")
+            return True
+        else:
+            return False
 
-        # if cls.background is None:  # first frame - init bg
-        #     cls.background = cls.blur_image(frame)
-        #
-        # blur_img = cls.blur_image(frame)
-        # diff = cv.absdiff(cls.background, blur_img)
-        # mask = cv.threshold(diff, 50, 255, cv.THRESH_BINARY)[1]
-        # return mask
-    #
-    # @staticmethod
-    # def blur_image(img):
-    #     # img = cv.medianBlur(img, 3)
-    #     img = cv.blur(img, (3, 3))
-    #     gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
-    #     # gray = cv.blur(gray, (3,3))
-    #     # gray = cv.medianBlur(gray, 3)
-    #     return gray
+
+#
+# class BgSubtractor:
+#     background = None
+#     cv_backSub = None
+#
+#     @classmethod
+#     def next_frame(cls, frame):
+#         if cls.cv_backSub is None:
+#             cls.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
+#         return cls.cv_backSub.apply(frame)
+#
+#         # if cls.background is None:  # first frame - init bg
+#         #     cls.background = cls.blur_image(frame)
+#         #
+#         # blur_img = cls.blur_image(frame)
+#         # diff = cv.absdiff(cls.background, blur_img)
+#         # mask = cv.threshold(diff, 50, 255, cv.THRESH_BINARY)[1]
+#         # return mask
+#     #
+#     # @staticmethod
+#     # def blur_image(img):
+#     #     # img = cv.medianBlur(img, 3)
+#     #     img = cv.blur(img, (3, 3))
+#     #     gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
+#     #     # gray = cv.blur(gray, (3,3))
+#     #     # gray = cv.medianBlur(gray, 3)
+#     #     return gray
 
 
 class FrameStore:
