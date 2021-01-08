@@ -1,6 +1,7 @@
 from collections import deque
 import numpy as np
 import math
+import logging
 import cv2 as cv
 from util import Util
 
@@ -23,8 +24,7 @@ class ShotFinder:
     @classmethod
     def next_frame(cls, frame, frame_cnt):  # None or shot_descr
         FrameStore.store_frame(frame, frame_cnt)
-        # if debug:
-        #     print(f"{frame_cnt=} {cls.state=}")
+        logging.debug(f"{frame_cnt=} {cls.state=}")
         if frame_cnt == 1:  # init bg
             cls.background_subtr = cv.createBackgroundSubtractorMOG2(varThreshold=140)
             cls.bg_frame = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
@@ -49,7 +49,7 @@ class ShotFinder:
                 return None
             # last frame of the shot
             shot_desc = (FrameStore.restore_last_frames(cls.FRAMES_BEFORE_IMPACT + cls.FRAMES_AFTER_IMPACT),
-                         cls.FRAMES_BEFORE_IMPACT)
+                         frame_cnt - cls.ball_desc[4], frame_cnt)
             if debug:
                 print(f"************************** shot complete  {cls.ball_desc[4]} - {cls.impact_cnt} - {frame_cnt}")
                 # Util.show_img(frame, f"{frame_cnt=} found ")
@@ -60,12 +60,23 @@ class ShotFinder:
     @classmethod
     def is_ball_found(cls, frame, frame_cnt):
         # return still ball contour and set ball_desc else None
-        fg_mask = cls.background_subtr.apply(frame)
-        if cls.ball_seek_param:
-            ball_seek_mask = cls.ball_seek_param[0]
-            fg_mask = cv.bitwise_and(fg_mask, fg_mask, mask=ball_seek_mask)
-            # cv.imshow("ball seek mask", ball_seek_mask)
-        mask = cv.morphologyEx(fg_mask, cv.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+
+        if cls.ball_seek_param is None:  # first_search search
+            fg_mask = cls.background_subtr.apply(frame)
+            if cls.ball_seek_param:
+                ball_seek_mask = cls.ball_seek_param[0]
+                fg_mask = cv.bitwise_and(fg_mask, fg_mask, mask=ball_seek_mask)
+                # cv.imshow("ball seek mask", ball_seek_mask)
+            mask = cv.morphologyEx(fg_mask, cv.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        else:  # not a first_search search, use ball_seek_param
+            ball_seek_mask, area, ball_contour = cls.ball_seek_param
+            img = cv.medianBlur(frame, 5)
+            gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
+            # gray = cv.medianBlur(gray, 5)
+            # diff = cv.absdiff(self.start_area_bg, gray)
+            thresh = cv.threshold(gray, 100, 255, cv.THRESH_BINARY)[1]
+            thresh = cv.bitwise_and(thresh, thresh, mask=ball_seek_mask)
+            mask = cv.dilate(thresh, None, iterations=2)
         if debug:
             cv.imshow(f"frame mask", mask)
 
@@ -80,7 +91,7 @@ class ShotFinder:
         cls.ball_center_lst.append(ball_center)
         if max(np.std(cls.ball_center_lst, axis=0) > 5):
             # if debug:
-            #     print(f"is_ball_found: drop list {cls.ball_center_lst}")
+            #     print(f"is_ball_found: drop list {self.ball_center_lst}")
             # deviate more than 5 pixels
             cls.ball_center_lst = []  # drop the list of balls
             return False
@@ -98,10 +109,13 @@ class ShotFinder:
         ball_mask = cv.drawContours(ball_mask, [ball_contour], -1, 255, cv.FILLED)
         bg_ball_mean = cv.mean(cls.bg_frame, mask=ball_mask)
         found_ball_mean = cv.mean(cv.cvtColor(frame, cv.COLOR_BGR2HSV), mask=ball_mask)
-        cls.ball_desc = (ball_contour, ball_mask, bg_ball_mean[0], found_ball_mean[0], frame_cnt)
+        found_ball_min, found_ball_max, _, _ = cv.minMaxLoc(mask, mask=ball_mask)
+        cls.ball_desc = (ball_contour, ball_mask, bg_ball_mean[0], found_ball_mean[0],
+                         frame_cnt, found_ball_min, found_ball_max)
+        print(f"found_ball range: {found_ball_min} - {found_ball_max}")
 
         x, y, w, h = cv.boundingRect(ball_contour)
-        if cls.ball_seek_param is None:  # it's first search, store info about start_area for future searches
+        if cls.ball_seek_param is None:  # it's first_search search, store info about start_area for future searches
             ball_seek_mask = np.zeros(frame.shape[0:2], np.uint8)
             p1 = max(0, x - 7 * w), max(0, y - 2 * h)
             p2 = min(1920, x + 8 * w), min(1080, y + 3 * h)
@@ -123,7 +137,7 @@ class ShotFinder:
         # if mask contains a ball return it's contour else None
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         if cls.ball_seek_param:
-            min_area, max_area = cls.ball_seek_param[1] * 0.5, cls.ball_seek_param[1] * 1.5
+            min_area, max_area = cls.ball_seek_param[1] * 0.7, cls.ball_seek_param[1] * 1.3
         else:
             min_area, max_area = cls.BALL_AVG_AREA * 0.5, cls.BALL_AVG_AREA * 2
         ball_cont_lst = [c for c in contours if min_area < cv.contourArea(c) < max_area]
@@ -140,7 +154,7 @@ class ShotFinder:
         if cls.ball_seek_param:
             first_ball_cont = cls.ball_seek_param[2]
             match_ratio = cv.matchShapes(cont,first_ball_cont,1,0.0)
-            if not (match_ratio < 0.2):
+            if not (match_ratio < 0.15):
                 return None
             # matchs = [cv.matchShapes(cont,first_ball_cont,method,0.0) for method in [1,2,3]]
             # print(f" get ball match: {matchs[0]=:.02f} {matchs[1]=:.02f}{matchs[2]=:.02f}")
@@ -150,7 +164,7 @@ class ShotFinder:
     @classmethod
     def is_ball_removed(cls, frame, frame_cnt):
         # return frame_cnt if ball removed from his place else None
-        _, ball_mask, bg_ball_mean, found_ball_mean, _ = cls.ball_desc
+        ball_mask, bg_ball_mean, found_ball_mean = cls.ball_desc[1:4]
         cur_ball_mean = cv.mean(cv.cvtColor(frame, cv.COLOR_BGR2HSV), mask=ball_mask)[0]
         # if debug:
         #     print(f"{frame_cnt=} is_ball_removed  ::: {bg_ball_mean=} {cur_ball_mean=} {found_ball_mean=}")
@@ -168,16 +182,16 @@ class ShotFinder:
 #     cv_backSub = None
 #
 #     @classmethod
-#     def next_frame(cls, frame):
-#         if cls.cv_backSub is None:
-#             cls.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
-#         return cls.cv_backSub.apply(frame)
+#     def next_frame(self, frame):
+#         if self.cv_backSub is None:
+#             self.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
+#         return self.cv_backSub.apply(frame)
 #
-#         # if cls.background is None:  # first frame - init bg
-#         #     cls.background = cls.blur_image(frame)
+#         # if self.background is None:  # first_search frame - init bg
+#         #     self.background = self.blur_image(frame)
 #         #
-#         # blur_img = cls.blur_image(frame)
-#         # diff = cv.absdiff(cls.background, blur_img)
+#         # blur_img = self.blur_image(frame)
+#         # diff = cv.absdiff(self.background, blur_img)
 #         # mask = cv.threshold(diff, 50, 255, cv.THRESH_BINARY)[1]
 #         # return mask
 #     #

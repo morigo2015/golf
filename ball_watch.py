@@ -14,7 +14,7 @@ class BallWatch:
         # return state: unknown, ready, removed
 
         mask = BgSubtractor.apply(frame, frame_cnt)
-        # if frame_cnt < 20: # need several first frames to build mask
+        # if frame_cnt < 20: # need several first_search frames to build mask
         #     return 'unknown', -1, -1
 
         if cls.state == 'unknown':

@@ -145,6 +145,9 @@ class FrameStream:
     def fps(self):
         return self.frame_cnt / self.total_time()
 
+    def stat_string(self):
+        return f"Finish. Duration={self.total_time():.0f} sec, {self.frame_cnt} frames,  fps={self.fps():.1f} f/s"
+
     def __del__(self):
         if self.mode == 'video':
             self.cap.release()
