@@ -70,7 +70,7 @@ class SeekRoll:
 
 
         sliced_mask_centers_lst = [center_xy for smc in sliced_mask_lst if
-                                   (center_xy := Util.cont_center(smc))[0] != -1]
+                                   (center_xy := Util.center_xy(smc))[0] != -1]
 
         sliced_mask_shift_w_lst = [sliced_mask_centers_lst[i + 1][0] - sliced_mask_centers_lst[i][0]
                                    for i in range(len(sliced_mask_centers_lst) - 1)]

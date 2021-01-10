@@ -38,7 +38,7 @@ class MarkUp:
         self.start_area = StartArea(self.markup['start_point'], self.markup['tl_dist'], img)
 
         # if debug:
-        #     self.show_markup(img)
+        #     cls.show_markup(img)
 
     def draw_markup(self, image):
         # draw_markup

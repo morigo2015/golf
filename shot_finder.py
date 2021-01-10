@@ -73,7 +73,7 @@ class ShotFinder:
             img = cv.medianBlur(frame, 5)
             gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
             # gray = cv.medianBlur(gray, 5)
-            # diff = cv.absdiff(self.start_area_bg, gray)
+            # diff = cv.absdiff(cls.start_area_bg, gray)
             thresh = cv.threshold(gray, 100, 255, cv.THRESH_BINARY)[1]
             thresh = cv.bitwise_and(thresh, thresh, mask=ball_seek_mask)
             mask = cv.dilate(thresh, None, iterations=2)
@@ -91,7 +91,7 @@ class ShotFinder:
         cls.ball_center_lst.append(ball_center)
         if max(np.std(cls.ball_center_lst, axis=0) > 5):
             # if debug:
-            #     print(f"is_ball_found: drop list {self.ball_center_lst}")
+            #     print(f"is_ball_found: drop list {cls.ball_center_lst}")
             # deviate more than 5 pixels
             cls.ball_center_lst = []  # drop the list of balls
             return False
@@ -182,16 +182,16 @@ class ShotFinder:
 #     cv_backSub = None
 #
 #     @classmethod
-#     def next_frame(self, frame):
-#         if self.cv_backSub is None:
-#             self.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
-#         return self.cv_backSub.apply(frame)
+#     def next_frame(cls, frame):
+#         if cls.cv_backSub is None:
+#             cls.cv_backSub = cv.createBackgroundSubtractorMOG2(varThreshold=140)
+#         return cls.cv_backSub.apply(frame)
 #
-#         # if self.background is None:  # first_search frame - init bg
-#         #     self.background = self.blur_image(frame)
+#         # if cls.background is None:  # first_search frame - init bg
+#         #     cls.background = cls.blur_image(frame)
 #         #
-#         # blur_img = self.blur_image(frame)
-#         # diff = cv.absdiff(self.background, blur_img)
+#         # blur_img = cls.blur_image(frame)
+#         # diff = cv.absdiff(cls.background, blur_img)
 #         # mask = cv.threshold(diff, 50, 255, cv.THRESH_BINARY)[1]
 #         # return mask
 #     #

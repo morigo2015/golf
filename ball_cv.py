@@ -195,6 +195,7 @@ class RingBuffer:
         return self.items_lst
 
 
+
 def main():
     # noinspection PyArgumentList
     logging.basicConfig(
@@ -215,9 +216,9 @@ def main():
 if __name__ == '__main__':
     main()
 
-# if self.bg_sub is None:
-#     self.bg_sub = cv.createBackgroundSubtractorMOG2() # varThreshold=140)
-# bg_mask = self.bg_sub.apply(frame)
+# if cls.bg_sub is None:
+#     cls.bg_sub = cv.createBackgroundSubtractorMOG2() # varThreshold=140)
+# bg_mask = cls.bg_sub.apply(frame)
 # bg_mask = cv.morphologyEx(bg_mask, cv.MORPH_DILATE, np.ones((7, 7), np.uint8))
 
 # cv.imshow("bg_mask", bg_mask)

@@ -71,6 +71,14 @@ class Util:
         return rect[1][0] * rect[1][1]
 
     @staticmethod
+    def length_2_width(rect):
+        return Util.rect_length(rect) / Util.rect_width(rect)
+
+    @staticmethod
+    def close_to_rectangle( contour, thresh ):
+        rect = cv.minAreaRect(contour)
+
+    @staticmethod
     def join_rect_lst(lst1, lst2):
         # join 2 lists of rotated rectangles descriptors (idx, rect)*
         # for intersected rects leave one which is longer
@@ -103,11 +111,11 @@ class Util:
             exit(0)
 
     @staticmethod
-    def area_2_radius( area ):
-        return ( area / math.pi) ** 0.5
+    def area_2_radius(area):
+        return (area / math.pi) ** 0.5
 
     @staticmethod
-    def radius_to_area( radius ):
+    def radius_to_area(radius):
         return math.pi * radius * radius
 
     @staticmethod
@@ -115,10 +123,10 @@ class Util:
         return cv.drawContours(np.zeros(shape, np.uint8), [contour], -1, 255, -1)
 
     @staticmethod
-    def cont_center(contour):
+    def center_xy(contour):
         M = cv.moments(contour)
 
-        ball_center = (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])) if M['m00'] else (-1,-1)
+        ball_center = (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])) if M['m00'] else (-1, -1)
         return ball_center
 
 
@@ -156,7 +164,7 @@ class FrameStream:
         return frame, frame_name, self.frame_cnt
 
     def total_time(self):
-        return time.time()-self.start
+        return time.time() - self.start
 
     def fps(self):
         return self.frame_cnt / self.total_time()
@@ -167,6 +175,7 @@ class FrameStream:
     def __del__(self):
         if self.mode == 'video':
             self.cap.release()
+
 
 # -------------------------------------------------------------------------------------------------------------
 
