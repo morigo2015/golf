@@ -63,6 +63,10 @@ class Util:
         return max(rect[1][0], rect[1][1])  # max(w,h)
 
     @staticmethod
+    def rect_width(rect):
+        return min(rect[1][0], rect[1][1])  # min(w,h)
+
+    @staticmethod
     def rect_area(rect):
         return rect[1][0] * rect[1][1]
 
@@ -105,6 +109,18 @@ class Util:
     @staticmethod
     def radius_to_area( radius ):
         return math.pi * radius * radius
+
+    @staticmethod
+    def cont_mask(contour, shape):
+        return cv.drawContours(np.zeros(shape, np.uint8), [contour], -1, 255, -1)
+
+    @staticmethod
+    def cont_center(contour):
+        M = cv.moments(contour)
+
+        ball_center = (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])) if M['m00'] else (-1,-1)
+        return ball_center
+
 
 class FrameStream:
     def __init__(self, source_path):
