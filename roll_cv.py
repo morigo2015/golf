@@ -42,7 +42,7 @@ class SeekRoll:
         prev_AND = reduce(lambda x, y: cv.bitwise_and(x, y), prev_lst)
         prev_AND_neg = cv.bitwise_not(prev_AND)
         prev_stacked = cv.bitwise_and(prev_OR, prev_AND_neg)
-        # cv.imshow("prev_stacked", prev_stacked)
+        cv.imshow("prev_stacked", prev_stacked)
 
         # filter contours in prev_stacked (area, length/width, similar to rotated rectangle) and build tail
         contours, _ = cv.findContours(prev_stacked, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
