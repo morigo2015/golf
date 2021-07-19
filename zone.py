@@ -27,6 +27,10 @@ class ZonePoints:
         cls.zone_corners_lst.append((x, y))
         cls.draw_zone_corners()
 
+    @classmethod
+    def reset_zone_corner_lst(cls):
+        pass
+
     @staticmethod
     def mouse_callback(event, x, y, flags, param):
         if event == cv.EVENT_LBUTTONDOWN:
