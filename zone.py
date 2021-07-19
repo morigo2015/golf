@@ -1,6 +1,7 @@
 import cv2 as cv
 import numpy as np
 
+
 class ZonePoints:
     image = None
     zone_corners_lst = None
@@ -18,8 +19,8 @@ class ZonePoints:
     @classmethod
     def draw_zone_corners(cls):
         print(cls.zone_corners_lst)
-        contour = np.array(cls.zone_corners_lst).reshape((-1,1,2)).astype(np.int32)
-        cv.drawContours(cls.image,[contour], -1, (255,255,255), cv.FILLED)
+        contour = np.array(cls.zone_corners_lst).reshape((-1, 1, 2)).astype(np.int32)
+        cv.drawContours(cls.image, [contour], -1, (255, 255, 255), cv.FILLED)
 
     @classmethod
     def add_zone_corner(cls, x, y):
@@ -36,6 +37,7 @@ class ZonePoints:
         if event == cv.EVENT_LBUTTONDOWN:
             ZonePoints.add_zone_corner(x, y)
 
+
 # -----------------------------------------------------------------------
 
 from util import FrameStream
@@ -44,6 +46,7 @@ fs = FrameStream("video/clp/bf-merged.avi")
 
 
 def main():
+    frame_mode = False  # initial frame_mode
     zone_mode = False
     # img = np.zeros((512, 512, 3), np.uint8)
     cv.namedWindow('image')
@@ -52,20 +55,24 @@ def main():
     ZonePoints.set_zone_on('image', img)
 
     while (1):
-        if not zone_mode:
-            img, _, _ = fs.next_frame()
+        img, _, _ = fs.next_frame()
+
         if img is None:
             break
 
         cv.imshow('image', img)
-        k = cv.waitKey(1) & 0xFF
-        if k == ord('z'):
+        ch = cv.waitKey(0 if frame_mode else 1)
+        if ch == ord('z'):
             zone_mode = not zone_mode
-            if zone_mode:
-                ZonePoints.set_zone_on('image', img)
-            else:
-                ZonePoints.set_zone_off()
-        elif k == 27:
+        elif ch == ord(' '):
+            frame_mode = True
+            ZonePoints.set_zone_on('image', img)
+            continue
+        elif ch == ord('g'):
+            frame_mode = False
+            ZonePoints.set_zone_off()
+            continue
+        elif ch == 27 or ch == ord('q'):
             break
 
     cv.destroyAllWindows()

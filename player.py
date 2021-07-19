@@ -6,6 +6,7 @@ import datetime
 import cv2 as cv
 
 from util import FrameStream
+from zone import ZonePoints
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
 inp_source_name = 'video/clp/bf-merged.avi'  # tst.mp4
