@@ -1,7 +1,6 @@
 import cv2 as cv
 import numpy as np
 
-
 class ZonePoints:
     image = None
     zone_corners_lst = None
