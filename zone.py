@@ -1,7 +1,10 @@
+import json
+import logging
+
 import cv2 as cv
 import numpy as np
 
-import logging
+param_fname = "param.json"
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
@@ -11,10 +14,23 @@ class ZonePoints:
     zone_corners_lst = []
 
     @classmethod
-    def set_mouse(cls, win_name):
-        logging.debug("logging set on")
+    def zone_init(cls, win_name):
+        logging.debug("logging init")
+        try:
+            with open(param_fname, 'r') as f:
+                cls.zone_corners_lst = json.load(f)
+                logging.debug(f"load zone_corner_lst from {param_fname}: {cls.zone_corners_lst} ")
+        except FileNotFoundError as error:
+            logging.debug("param.json not found. reset zone_corner_lst")
+            cls.reset_zone_corner_lst()
         # ZonePoints.reset_zone_corner_lst()  # temporally until save/load
         cv.setMouseCallback(win_name, mouse_callback)
+
+    @classmethod
+    def zone_save(cls):
+        with open(param_fname, 'w') as f:
+            json.dump(cls.zone_corners_lst, f, indent=2)
+            logging.debug(f"save zone_corner_lst to {param_fname}: {cls.zone_corners_lst} ")
 
     @classmethod
     def new_frame(cls, image):
@@ -34,8 +50,7 @@ class ZonePoints:
 
     @classmethod
     def draw_zone_corners(cls, image):
-        logging.debug("logging draw corners")
-        print(cls.zone_corners_lst)
+        logging.debug(f"logging draw corners: {cls.zone_corners_lst}")
         if not len(cls.zone_corners_lst):
             return
         contour = np.array(cls.zone_corners_lst).reshape((-1, 1, 2)).astype(np.int32)
@@ -63,7 +78,7 @@ def main():
     zone_draw_mode = False  # True - draw active zone (corners_lst) on all images
     # img = np.zeros((512, 512, 3), np.uint8)
     cv.namedWindow('image')
-    ZonePoints.set_mouse('image')
+    ZonePoints.zone_init('image')
 
     frame, _, _ = fs.next_frame()
 
@@ -93,6 +108,7 @@ def main():
         elif ch == 27 or ch == ord('q'):
             break
 
+    ZonePoints.zone_save()
     cv.destroyAllWindows()
 
 
