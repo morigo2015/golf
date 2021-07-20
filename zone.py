@@ -75,7 +75,7 @@ fs = FrameStream("video/raw-done/out2-back-further1.avi")
 
 def main():
     frame_mode = False  # initial frame_mode
-    zone_draw_mode = False  # True - draw active zone (corners_lst) on all images
+    zone_draw_mode = True  # True - draw active zone (corners_lst) on all images
     # img = np.zeros((512, 512, 3), np.uint8)
     cv.namedWindow('image')
     ZonePoints.zone_init('image')
