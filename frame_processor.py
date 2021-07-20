@@ -6,7 +6,7 @@ import numpy as np
 from util import Util
 
 need_transpose = True
-
+delay = 1
 
 def get_white_mask_hsv(frame):
     hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
@@ -17,7 +17,7 @@ def get_white_mask_hsv(frame):
     white_mask = cv.inRange(hsv, lower_white, upper_white)
     # Bitwise-AND mask and original image
     # white_masked = cv.bitwise_and(frame, frame, mask=white_mask)
-    Util.show_img(white_mask, "white mask")
+    Util.show_img(white_mask, "white mask", delay)
     return white_mask
 
 
@@ -30,7 +30,7 @@ def get_white_mask_hls(frame):
     white_mask = cv.inRange(hsv, lower_white, upper_white)
     # Bitwise-AND mask and original image
     # white_masked = cv.bitwise_and(frame, frame, mask=white_mask)
-    Util.show_img(white_mask, "white mask hsl")
+    Util.show_img(white_mask, "white mask hsl", delay)
     return white_mask
 
 

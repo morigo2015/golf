@@ -90,9 +90,9 @@ class Util:
         return joined_lst
 
     @staticmethod
-    def show_img(img, name=""):
+    def show_img(img, name="",delay=0):
         cv.imshow(f"{name}", img)
-        ch = cv.waitKey(0)
+        ch = cv.waitKey(delay)
         if ch == ord('s'):
             cv.imwrite(f"{Util.out_fname}{name}.png", img)
         elif ch == ord('q'):
