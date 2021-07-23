@@ -91,6 +91,8 @@ class Util:
 
     @staticmethod
     def show_img(img, name="",delay=0):
+        if delay <0: # just skip this debug
+            return
         cv.imshow(f"{name}", img)
         ch = cv.waitKey(delay)
         if ch == ord('s'):

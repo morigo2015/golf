@@ -49,12 +49,16 @@ class ZonePoints:
         cls.zone_corners_lst = []
 
     @classmethod
+    def get_zone_contour(cls):
+        contour = np.array(cls.zone_corners_lst).reshape((-1, 1, 2)).astype(np.int32)
+        return contour
+
+    @classmethod
     def draw_zone_corners(cls, image):
         logging.debug(f"logging draw corners: {cls.zone_corners_lst}")
         if not len(cls.zone_corners_lst):
             return
-        contour = np.array(cls.zone_corners_lst).reshape((-1, 1, 2)).astype(np.int32)
-        cv.drawContours(image, [contour], -1, (255, 255, 255), 3)
+        cv.drawContours(image, [cls.get_zone_contour()], -1, (255, 255, 255), 3)
         return
 
 
