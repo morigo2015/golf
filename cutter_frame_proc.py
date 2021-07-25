@@ -78,7 +78,7 @@ def get_start_area_status(frame):
     # Util.show_img(gray, "gray", 1)
 
     _, thresh_img = cv.threshold(gray, StartArea.thresh_val, 255, cv.THRESH_BINARY)
-    # Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+    Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
     contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     contours = [cnt for cnt in contours if StartArea.ball_area * 0.5 < cv.contourArea(cnt)]
@@ -104,7 +104,7 @@ def frame_processor(frame, frame_cnt):
         OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
     frame = cv.resize(frame, None, fx=0.5, fy=0.5)  # !!!
-    # frame = cv.transpose(frame)
+    frame = cv.transpose(frame)
     frame = cv.flip(frame, 1)
 
     get_start_area_data(frame)
