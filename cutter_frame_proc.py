@@ -12,6 +12,7 @@ need_transpose = True
 delay = 1
 debug_flg = True
 BLUR_LEVEL = 3
+ROI_CENTER = 30
 
 
 class StartArea:
@@ -21,15 +22,44 @@ class StartArea:
     ball_area = None
 
 
+def find_best_threshold(gray):
+    level_results = []
+    for thresh in range(50, 200, 5):
+        _, img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
+        contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        if len(contours) != 1:  # no contours which include click_xy or too much
+            continue
+        cont_lst = [cont for cont in contours if
+                    cv.pointPolygonTest(cont, (ROI_CENTER, ROI_CENTER), measureDist=False) >= 0]
+        if len(cont_lst) != 1:  # no contours which include click_xy
+            continue
+        cont = cont_lst[0]  # it should be the one only contour which include click_xy
+        area = cv.contourArea(cont)
+        x, y, w, h = cv.boundingRect(cont)
+        if max(w,h) == 2 * ROI_CENTER:
+            continue
+        logging.debug(f"{thresh=}: {area=} {x=} {y=} {w=} {h=}")
+        # Util.show_img(img, "thresh find", 0)
+        level_results.append({"thresh": thresh, "area": area, "d": max(w, h)})
+    thresh_otsu, _ = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    level_results = sorted(level_results, key=lambda result: result["area"], reverse=True)
+    logging.debug(f"{len(level_results)=} {thresh_otsu=}")
+    if len(level_results)>1: # return second best by area if possible
+        return level_results[1]["thresh"]
+    if len(level_results)==1:  # return just best if there is only one result
+        return level_results[0]["thresh"]
+    return None
+
+
 def get_start_area_data(frame):
+    global ROI_CENTER
     if not OnePointZone.zone_is_defined():
         return
     xc, yc = OnePointZone.zone_point
 
-    ROI_SHFT = 20*3
     x_max, y_max = frame.shape[1], frame.shape[0]
-    roi_x, roi_y = max(xc - ROI_SHFT, 0), max(yc - ROI_SHFT, 0)
-    roi_w, roi_h = min(x_max - roi_x, ROI_SHFT * 2), min(y_max - roi_y, ROI_SHFT * 2)
+    roi_x, roi_y = max(xc - ROI_CENTER, 0), max(yc - ROI_CENTER, 0)
+    roi_w, roi_h = min(x_max - roi_x, ROI_CENTER * 2), min(y_max - roi_y, ROI_CENTER * 2)
     roi = frame[roi_y:roi_y + roi_h, roi_x:roi_x + roi_w]
 
     gray = cv.cvtColor(roi, cv.COLOR_BGR2GRAY)
@@ -39,29 +69,38 @@ def get_start_area_data(frame):
     gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
     Util.show_img(gray, "StartArea: gray", 1)
 
-    StartArea.thresh_val, thresh_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-    Util.show_img(thresh_img, "StartArea: thresh_img", 1)
+    # StartArea.thresh_val, thresh_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    thresh = find_best_threshold(gray)
+    if not thresh:  # can't found ball contour
+        print(" can't found ball where clicked")
+        logging.debug(" can't found ball where clicked")
+        return
+    StartArea.thresh_val, thresh_img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
+
+    Util.show_img(thresh_img, "StartArea: thresh_img", 0)
 
     contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    cont_lst = [cont for cont in contours if cv.pointPolygonTest(cont, (ROI_SHFT, ROI_SHFT), measureDist=False) >= 0]
+    cont_lst = [cont for cont in contours if
+                cv.pointPolygonTest(cont, (ROI_CENTER, ROI_CENTER), measureDist=False) >= 0]
     if len(cont_lst) == 1:
         x, y, w, h = cv.boundingRect(cont_lst[0])
         d = max(w, h)
-        if d == 2 * ROI_SHFT: # nothing worth is found, contour is for full image
+        if d == 2 * ROI_CENTER:  # nothing worth is found, contour is for full image
             # thresh_val = find_best_param(gray)
             return
         StartArea.contour = cont_lst[0]
         StartArea.ball_area = cv.contourArea(StartArea.contour)
 
-        StartArea.x, StartArea.y = roi_x + x - 2 * d, roi_y + y - 2 * d # 2 cells aside
+        StartArea.x, StartArea.y = roi_x + x - 2 * d, roi_y + y - 2 * d  # 2 cells aside
         StartArea.w, StartArea.h = 5 * d, 5 * d  # 2 cells + original cell + 2 cells
         if debug_flg:
             logging.debug(f"StartArea set by ball position: \
                 xy=({StartArea.x},{StartArea.y}) wh=({StartArea.w},{StartArea.h})  {StartArea.ball_area=}")
-    elif len(cont_lst) == 0:  # not found any contour around click_xy, use ROI_SHFT as default
+    elif len(cont_lst) == 0:  # not found any contour around click_xy
         return
     elif len(cont_lst) > 1:
-        logging.error(f"!!!! Error !!! several contours include one point. ROI_SHFT= {ROI_SHFT}, cont_lst= {cont_lst}")
+        logging.error(
+            f"!!!! Error !!! several contours include one point. ROI_SHFT= {ROI_CENTER}, cont_lst= {cont_lst}")
 
     OnePointZone.reset_zone_point()
     return
@@ -104,6 +143,7 @@ def get_start_area_status(frame):
 
 status_history = ''
 
+
 def frame_processor(frame, frame_cnt):
     global status_history
     if frame_cnt == 1:
@@ -127,7 +167,7 @@ def frame_processor(frame, frame_cnt):
                cv.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 3)
 
     status_history += status
-    r = re.search('B{5}M*E{5}', status_history)
+    r = re.search('B{7}(M|B)*E{7}', status_history)
     logging.debug(f"{frame_cnt=}:  {status=}, {status_history=}")
     if r:
         print(f"hit!! {frame_cnt=} {status_history=} {r.span()} {r.string}")
