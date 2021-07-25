@@ -5,7 +5,7 @@ import re
 import cv2 as cv
 import numpy as np
 
-from zone import ZonePoints
+from zone import OnePointZone
 from util import Util
 
 need_transpose = True
@@ -22,9 +22,9 @@ class StartArea:
 
 
 def get_start_area_data(frame):
-    if not len(ZonePoints.zone_corners_lst) == 1:
+    if not OnePointZone.zone_is_defined():
         return
-    xc, yc = ZonePoints.zone_corners_lst[0]
+    xc, yc = OnePointZone.zone_point
 
     ROI_SHFT = 20
     x_max, y_max = frame.shape[1], frame.shape[0]
@@ -56,7 +56,7 @@ def get_start_area_data(frame):
     elif len(cont_lst) > 1:
         logging.error(f"!!!! Error !!! several contours include one point. ROI_SHFT= {ROI_SHFT}, cont_lst= {cont_lst}")
 
-    ZonePoints.reset_zone_corner_lst()
+    OnePointZone.reset_zone_point()
     Util.show_img(thresh_img, "StartArea: thresh_img", 1)
     return True
 
@@ -91,7 +91,8 @@ def get_start_area_status(frame):
     if len(contours) == 1 and not is_touched_border(contours[0]):
         match_rate = cv.matchShapes(contours[0], StartArea.contour, 1, 0)
         logging.debug(f" {match_rate=}")
-        return 'B'
+        if match_rate < 0.5:
+            return 'B'
     return 'M'
 
 
@@ -100,7 +101,7 @@ status_history = ''
 def frame_processor(frame, frame_cnt):
     global status_history
     if frame_cnt == 1:
-        ZonePoints.reset_zone_corner_lst()  # it points to ball so we have to re-init it each time
+        OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
     frame = cv.resize(frame, None, fx=0.5, fy=0.5)  # !!!
     # frame = cv.transpose(frame)

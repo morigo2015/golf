@@ -12,7 +12,7 @@ import datetime
 import cv2 as cv
 
 from util import FrameStream
-from zone import ZonePoints
+from zone import OnePointZone
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
 inp_source_name = 'video/phone-profil-evening-1.mp4' # 0.avi b2_cut
@@ -47,7 +47,7 @@ def main():
 
     zone_draw_mode = True  # True - draw active zone (corners_lst) on all images
     cv.namedWindow('out_frame')
-    ZonePoints.zone_init('out_frame', need_load=False)
+    OnePointZone.zone_init('out_frame', need_load=False)
 
     delay = delay_initial
     fs = FrameStream(inp_source_name)
@@ -62,9 +62,9 @@ def main():
         cv.putText(out_frame, f"D:{delay / delay_multiplier:.0f}/{frame_cnt}", (5, 12),
                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-        ZonePoints.new_frame(out_frame)
+        OnePointZone.new_frame(out_frame)
         if zone_draw_mode:
-            ZonePoints.draw_zone_corners(out_frame)
+            OnePointZone.draw_zone(out_frame)
 
         cv.imshow(f'out_frame', out_frame)
 
@@ -95,7 +95,7 @@ def main():
         elif ch == ord('z'):
             zone_draw_mode = not zone_draw_mode
 
-    ZonePoints.zone_save()
+    OnePointZone.zone_save()
     if end_stream_proc:
         end_stream_proc(frame_cnt)
 
