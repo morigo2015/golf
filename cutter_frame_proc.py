@@ -26,7 +26,7 @@ def get_start_area_data(frame):
         return
     xc, yc = OnePointZone.zone_point
 
-    ROI_SHFT = 20
+    ROI_SHFT = 20*3
     x_max, y_max = frame.shape[1], frame.shape[0]
     roi_x, roi_y = max(xc - ROI_SHFT, 0), max(yc - ROI_SHFT, 0)
     roi_w, roi_h = min(x_max - roi_x, ROI_SHFT * 2), min(y_max - roi_y, ROI_SHFT * 2)
@@ -37,15 +37,22 @@ def get_start_area_data(frame):
     kernel = np.ones((BLUR_LEVEL, BLUR_LEVEL), np.uint8)
     gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
     gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
+    Util.show_img(gray, "StartArea: gray", 1)
 
     StartArea.thresh_val, thresh_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    Util.show_img(thresh_img, "StartArea: thresh_img", 1)
+
     contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     cont_lst = [cont for cont in contours if cv.pointPolygonTest(cont, (ROI_SHFT, ROI_SHFT), measureDist=False) >= 0]
     if len(cont_lst) == 1:
+        x, y, w, h = cv.boundingRect(cont_lst[0])
+        d = max(w, h)
+        if d == 2 * ROI_SHFT: # nothing worth is found, contour is for full image
+            # thresh_val = find_best_param(gray)
+            return
         StartArea.contour = cont_lst[0]
         StartArea.ball_area = cv.contourArea(StartArea.contour)
-        x, y, w, h = cv.boundingRect(StartArea.contour)
-        d = max(w, h)
+
         StartArea.x, StartArea.y = roi_x + x - 2 * d, roi_y + y - 2 * d # 2 cells aside
         StartArea.w, StartArea.h = 5 * d, 5 * d  # 2 cells + original cell + 2 cells
         if debug_flg:
@@ -57,8 +64,7 @@ def get_start_area_data(frame):
         logging.error(f"!!!! Error !!! several contours include one point. ROI_SHFT= {ROI_SHFT}, cont_lst= {cont_lst}")
 
     OnePointZone.reset_zone_point()
-    Util.show_img(thresh_img, "StartArea: thresh_img", 1)
-    return True
+    return
 
 
 def is_touched_border(contour):
@@ -103,7 +109,7 @@ def frame_processor(frame, frame_cnt):
     if frame_cnt == 1:
         OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
-    frame = cv.resize(frame, None, fx=0.5, fy=0.5)  # !!!
+    # frame = cv.resize(frame, None, fx=0.5, fy=0.5)  # !!!
     frame = cv.transpose(frame)
     frame = cv.flip(frame, 1)
 
@@ -122,7 +128,7 @@ def frame_processor(frame, frame_cnt):
 
     status_history += status
     r = re.search('B{5}M*E{5}', status_history)
-    logging.debug(f"{frame_cnt}:  {status=}, {status_history=}")
+    logging.debug(f"{frame_cnt=}:  {status=}, {status_history=}")
     if r:
         print(f"hit!! {frame_cnt=} {status_history=} {r.span()} {r.string}")
         logging.debug(f"hit!! {frame_cnt=} {status_history=} {r.span()} {r.string}")
