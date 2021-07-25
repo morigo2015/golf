@@ -15,7 +15,7 @@ from util import FrameStream
 from zone import ZonePoints
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-inp_source_name = 'video/b2_cut.avi'  # tst.mp4
+inp_source_name = 'video/phone-profil-evening-1.mp4' # 0.avi b2_cut
 # inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 out_file_name = 'video/out2.avi'
@@ -35,7 +35,7 @@ frame_proc_fname = None  # no proc
 end_stream_proc = None
 if need_frame_processor:
     try:
-        from zone_frame_proc import frame_processor, end_stream_processor
+        from cutter_frame_proc import frame_processor, end_stream_processor # zone_frame_proc
         frame_proc = frame_processor
         end_stream_proc = end_stream_processor
     except ImportError as error:
@@ -47,7 +47,7 @@ def main():
 
     zone_draw_mode = True  # True - draw active zone (corners_lst) on all images
     cv.namedWindow('out_frame')
-    ZonePoints.zone_init('out_frame')
+    ZonePoints.zone_init('out_frame', need_load=False)
 
     delay = delay_initial
     fs = FrameStream(inp_source_name)
@@ -106,51 +106,6 @@ def main():
     if write_mode:
         out.release()
     cv.destroyAllWindows()
-
-
-# # ---------------------------------------------------------------------------------------------------------------
-#
-# markup = None
-#
-# from util import Util
-#
-#
-# def process_frame(frame, frame_name, frame_cnt):
-#     # return frame # vanilla player
-#     return frame
-# """
-#     global markup
-#     if markup_mode:
-#         # print(f"{frame_cnt=}")
-#         if markup is None:
-#             markup = MarkUp(frame, frame_name)
-#             if markup is not None:
-#                 print(f"markup set on {frame_cnt} in {frame_name}.\n{markup.markup=}")
-#                 # markup.show_markup()
-#             else:
-#                 print(f"markup is not set of first frame!")
-#                 exit()
-#         else:
-#             start_area = markup.start_area
-#             if start_area is None:
-#                 print(f"start area is not found!!")
-#                 exit()
-#             # if 1 < frame_cnt < 234:
-#             #     return frame
-#             got_ball = start_area.got_ball(frame)
-#             if got_ball:
-#                 start_area.draw_ball(frame)
-#             markup.draw_markup(frame)
-#             markup.start_area.draw_start_area(frame)
-#
-#     return frame
-#     """
-#
-# def process_end_of_stream(frame_cnt):
-#     global markup
-#     if markup is not None:
-#         markup.start_area.print_ball_stat()
-#
 
 if __name__ == '__main__':
     main()

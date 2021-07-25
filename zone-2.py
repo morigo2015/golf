@@ -1,3 +1,5 @@
+# one-point zone (ball position)
+
 import json
 import logging
 
@@ -9,67 +11,66 @@ param_fname = "param.json"
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 
-class ZonePoints:
+class OnePointZone:
     image = None
-    zone_corners_lst = []
+    zone_point = None
 
     @classmethod
-    def zone_init(cls, win_name, need_load = True):
+    def zone_init(cls, win_name, need_load=False):
         logging.debug("logging init")
         if need_load:
             try:
                 with open(param_fname, 'r') as f:
-                    cls.zone_corners_lst = json.load(f)
-                    logging.debug(f"load zone_corner_lst from {param_fname}: {cls.zone_corners_lst} ")
+                    cls.zone_point = json.load(f)
+                    logging.debug(f"load zone_corner_lst from {param_fname}: {cls.zone_point} ")
             except FileNotFoundError as error:
                 logging.debug("param.json not found. reset zone_corner_lst")
-                cls.reset_zone_corner_lst()
+                cls.__reset_zone_point()
         else:
-            cls.reset_zone_corner_lst()
-        # ZonePoints.reset_zone_corner_lst()  # temporally until save/load
-        cv.setMouseCallback(win_name, mouse_callback)
+            cls.__reset_zone_point()
+        cv.setMouseCallback(win_name, cls.mouse_callback)
 
     @classmethod
     def zone_save(cls):
         with open(param_fname, 'w') as f:
-            json.dump(cls.zone_corners_lst, f, indent=2)
-            logging.debug(f"save zone_corner_lst to {param_fname}: {cls.zone_corners_lst} ")
+            json.dump(cls.zone_point, f, indent=2)
+            logging.debug(f"save zone_corner_lst to {param_fname}: {cls.zone_point} ")
 
     @classmethod
     def new_frame(cls, image):
         cls.image = image
 
     @classmethod
-    def add_zone_corner(cls, x, y):
-        logging.debug(f"add_zone_corner {x} {y}")
-        cv.circle(cls.image, (x, y), 5, (0, 0, 255), -1)
-        cls.zone_corners_lst.append((x, y))
-        # cls.draw_zone_corners(image)
-
-    @classmethod
-    def reset_zone_corner_lst(cls):
-        logging.debug("reset zone_corner_lst")
-        cls.zone_corners_lst = []
-
-    @classmethod
-    def get_zone_contour(cls):
-        contour = np.array(cls.zone_corners_lst).reshape((-1, 1, 2)).astype(np.int32)
-        return contour
-
-    @classmethod
-    def draw_zone_corners(cls, image):
-        if not len(cls.zone_corners_lst):
+    def draw_zone(cls, image):
+        if not cls.zone_point:
             return
-        logging.debug(f"draw corners: {cls.zone_corners_lst}")
-        cv.drawContours(image, [cls.get_zone_contour()], -1, (255, 255, 255), 3)
+        # logging.debug(f"draw zone point: {cls.zone_point}")
+        # cv.drawContours(image, [cls.__get_zone_contour()], -1, (255, 255, 255), 3)
+        cv.drawMarker(image, cls.zone_point, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
         return
 
+    @classmethod
+    def __left_clicked(cls, x, y):
+        logging.debug(f"left_clicked {x} {y}")
+        # cv.circle(cls.image, (x, y), 5, (0, 0, 255), -1)
+        cls.zone_point = (x, y)
+        cls.draw_zone(cls.image)
 
-def mouse_callback(event, x, y, flags, param):
-    if event == cv.EVENT_LBUTTONDOWN:
-        ZonePoints.add_zone_corner(x, y)
-    if event == cv.EVENT_RBUTTONDOWN:
-        ZonePoints.reset_zone_corner_lst()
+    @classmethod
+    def __right_clicked(cls, x, y):
+        cls.__reset_zone_point()
+
+    @classmethod
+    def __reset_zone_point(cls):
+        logging.debug("reset zone_corner_lst")
+        cls.zone_point = None
+
+    @staticmethod
+    def mouse_callback(event, x, y, flags, param):
+        if event == cv.EVENT_LBUTTONDOWN:
+            OnePointZone.__left_clicked(x, y)
+        if event == cv.EVENT_RBUTTONDOWN:
+            OnePointZone.__right_clicked(x, y)
 
 
 # -----------------------------------------------------------------------
@@ -85,7 +86,7 @@ def main():
     zone_draw_mode = True  # True - draw active zone (corners_lst) on all images
     # img = np.zeros((512, 512, 3), np.uint8)
     cv.namedWindow('image')
-    ZonePoints.zone_init('image')
+    OnePointZone.zone_init('image')
 
     frame, _, _ = fs.next_frame()
 
@@ -96,10 +97,10 @@ def main():
         if frame is None:
             break
 
-        ZonePoints.new_frame(frame)
+        OnePointZone.new_frame(frame)
 
         if zone_draw_mode:
-            ZonePoints.draw_zone_corners(frame)
+            OnePointZone.draw_zone(frame)
 
         cv.imshow('image', frame)
         ch = cv.waitKey(0 if frame_mode else 1)
@@ -115,7 +116,7 @@ def main():
         elif ch == 27 or ch == ord('q'):
             break
 
-    ZonePoints.zone_save()
+    OnePointZone.zone_save()
     cv.destroyAllWindows()
 
 

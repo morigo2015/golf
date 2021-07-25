@@ -1,4 +1,4 @@
-# frame_processor for input stream
+# frame_processor for hit statistics
 
 import cv2 as cv
 import numpy as np
