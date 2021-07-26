@@ -1,6 +1,7 @@
 # frame_processor for cutter (cut stream to short swing clips)
 import logging
 import re
+from collections import deque
 
 import cv2 as cv
 import numpy as np
@@ -12,7 +13,8 @@ need_transpose = True
 delay = 1
 debug_flg = True
 BLUR_LEVEL = 3
-ROI_CENTER = 30
+INPUT_SCALE = 0.5
+ROI_CENTER = int(30 * INPUT_SCALE)
 
 
 class StartArea:
@@ -36,7 +38,7 @@ def find_best_threshold(gray):
         cont = cont_lst[0]  # it should be the one only contour which include click_xy
         area = cv.contourArea(cont)
         x, y, w, h = cv.boundingRect(cont)
-        if max(w,h) == 2 * ROI_CENTER:
+        if max(w, h) == 2 * ROI_CENTER:
             continue
         logging.debug(f"{thresh=}: {area=} {x=} {y=} {w=} {h=}")
         # Util.show_img(img, "thresh find", 0)
@@ -44,9 +46,9 @@ def find_best_threshold(gray):
     thresh_otsu, _ = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
     level_results = sorted(level_results, key=lambda result: result["area"], reverse=True)
     logging.debug(f"{len(level_results)=} {thresh_otsu=}")
-    if len(level_results)>1: # return second best by area if possible
+    if len(level_results) > 1:  # return second best by area if possible
         return level_results[1]["thresh"]
-    if len(level_results)==1:  # return just best if there is only one result
+    if len(level_results) == 1:  # return just best if there is only one result
         return level_results[0]["thresh"]
     return None
 
@@ -67,7 +69,7 @@ def get_start_area_data(frame):
     kernel = np.ones((BLUR_LEVEL, BLUR_LEVEL), np.uint8)
     gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
     gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
-    Util.show_img(gray, "StartArea: gray", 1)
+    # Util.show_img(gray, "StartArea: gray", 1)
 
     # StartArea.thresh_val, thresh_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
     thresh = find_best_threshold(gray)
@@ -77,7 +79,7 @@ def get_start_area_data(frame):
         return
     StartArea.thresh_val, thresh_img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
 
-    Util.show_img(thresh_img, "StartArea: thresh_img", 0)
+    # Util.show_img(thresh_img, "StartArea: thresh_img", 0)
 
     contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     cont_lst = [cont for cont in contours if
@@ -123,7 +125,7 @@ def get_start_area_status(frame):
     # Util.show_img(gray, "gray", 1)
 
     _, thresh_img = cv.threshold(gray, StartArea.thresh_val, 255, cv.THRESH_BINARY)
-    Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+    # Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
     contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     contours = [cnt for cnt in contours if StartArea.ball_area * 0.5 < cv.contourArea(cnt)]
@@ -142,14 +144,38 @@ def get_start_area_status(frame):
 
 
 status_history = ''
+FRAME_BUFF_SZ = 300
+MAX_CLIP_SZ = 150
+frames_buffer = deque(maxlen=FRAME_BUFF_SZ)
+
+swing_clip_cnt = 0
+swing_clip_prefix = "video/swings/sw_"
+
+def write_swing_clip(r):
+    global status_history, frames_buffer, swing_clip_cnt,swing_clip_prefix
+    start_pos, end_pos = r.span()
+    frames_to_write = min(end_pos - start_pos, MAX_CLIP_SZ)
+    frames_to_skip = len(frames_buffer) - frames_to_write
+    for i in range(frames_to_skip):
+        frames_buffer.popleft()
+    swing_clip_cnt += 1
+    out_file_name = f"{swing_clip_prefix}{swing_clip_cnt}.avi"
+    out = None
+    for i in range(frames_to_write):
+        out_frame = frames_buffer.popleft()
+        if not out:
+            out = cv.VideoWriter(out_file_name, cv.VideoWriter_fourcc(*'XVID'), 20.0, (out_frame.shape[1], out_frame.shape[0]))
+        out.write(out_frame)
+    out.release()
+    logging.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
 
 
 def frame_processor(frame, frame_cnt):
-    global status_history
+    global status_history, frames_buffer
     if frame_cnt == 1:
         OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
-    # frame = cv.resize(frame, None, fx=0.5, fy=0.5)  # !!!
+    frame = cv.resize(frame, None, fx=INPUT_SCALE, fy=INPUT_SCALE)  # !!!
     frame = cv.transpose(frame)
     frame = cv.flip(frame, 1)
 
@@ -157,22 +183,23 @@ def frame_processor(frame, frame_cnt):
     if StartArea.x is None:
         return frame
 
-    cv.rectangle(frame, (StartArea.x, StartArea.y), (StartArea.x + StartArea.w, StartArea.y + StartArea.h),
-                 (255, 0, 0), 1)
-    cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
-
     status = get_start_area_status(frame)
-
-    cv.putText(frame, f"{status}", (200, 200),
-               cv.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 3)
-
     status_history += status
-    r = re.search('B{7}(M|B)*E{7}', status_history)
+    frames_buffer.append(frame.copy())
+    logging.debug(f"{len(frames_buffer)=}")
+
+    cv.rectangle(frame, (StartArea.x, StartArea.y), (StartArea.x + StartArea.w, StartArea.y + StartArea.h), (255, 0, 0), 1)
+    # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
+    cv.putText(frame, f"{status}", (200, 200), cv.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 3)
+
+    r = re.search('B{7}B*[MB]{0,7}E{15}$', status_history)  # B{7}[MB]*E{7}$
     logging.debug(f"{frame_cnt=}:  {status=}, {status_history=}")
     if r:
         print(f"hit!! {frame_cnt=} {status_history=} {r.span()} {r.string}")
-        logging.debug(f"hit!! {frame_cnt=} {status_history=} {r.span()} {r.string}")
+        logging.debug(f"hit!! {frame_cnt=} {status_history=} {r.span()=} ")
+        write_swing_clip(r)
         status_history = ''
+        frames_buffer.clear()
 
     return frame
 
