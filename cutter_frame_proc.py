@@ -2,18 +2,21 @@
 import logging
 import re
 from collections import deque
+import datetime
 
 import cv2 as cv
 import numpy as np
 
 from zone import OnePointZone
-from util import Util
 
+swing_clip_prefix = "video/swings/"
 need_transpose = True
-delay = 1
+# need_transpose = False
+INPUT_SCALE = 0.7
+
 debug_flg = True
 BLUR_LEVEL = 3
-INPUT_SCALE = 0.5
+
 ROI_CENTER = int(30 * INPUT_SCALE)
 
 
@@ -95,9 +98,7 @@ def get_start_area_data(frame):
 
         StartArea.x, StartArea.y = roi_x + x - 2 * d, roi_y + y - 2 * d  # 2 cells aside
         StartArea.w, StartArea.h = 5 * d, 5 * d  # 2 cells + original cell + 2 cells
-        if debug_flg:
-            logging.debug(f"StartArea set by ball position: \
-                xy=({StartArea.x},{StartArea.y}) wh=({StartArea.w},{StartArea.h})  {StartArea.ball_area=}")
+        logging.debug(f"StartArea set by ball position: {StartArea.x=},{StartArea.y=}   {StartArea.w=},{StartArea.h=}  {StartArea.ball_area=}")
     elif len(cont_lst) == 0:  # not found any contour around click_xy
         return
     elif len(cont_lst) > 1:
@@ -109,7 +110,7 @@ def get_start_area_data(frame):
 
 
 def is_touched_border(contour):
-    x, y, w, h = cv.boundingRect(StartArea.contour)
+    x, y, w, h = cv.boundingRect(contour)
     return True \
         if x == StartArea.x or y == StartArea.y or x + w == StartArea.x + StartArea.w or y + h == StartArea.y + StartArea.h \
         else False
@@ -148,18 +149,15 @@ FRAME_BUFF_SZ = 300
 MAX_CLIP_SZ = 150
 frames_buffer = deque(maxlen=FRAME_BUFF_SZ)
 
-swing_clip_cnt = 0
-swing_clip_prefix = "video/swings/sw_"
 
 def write_swing_clip(r):
-    global status_history, frames_buffer, swing_clip_cnt,swing_clip_prefix
+    global status_history, frames_buffer, swing_clip_prefix
     start_pos, end_pos = r.span()
     frames_to_write = min(end_pos - start_pos, MAX_CLIP_SZ)
     frames_to_skip = len(frames_buffer) - frames_to_write
     for i in range(frames_to_skip):
         frames_buffer.popleft()
-    swing_clip_cnt += 1
-    out_file_name = f"{swing_clip_prefix}{swing_clip_cnt}.avi"
+    out_file_name = f"{swing_clip_prefix}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"  # f"{swing_clip_prefix}{swing_clip_cnt}.avi"
     out = None
     for i in range(frames_to_write):
         out_frame = frames_buffer.popleft()
@@ -168,6 +166,7 @@ def write_swing_clip(r):
         out.write(out_frame)
     out.release()
     logging.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
+    return out_file_name
 
 
 def frame_processor(frame, frame_cnt):
@@ -176,7 +175,8 @@ def frame_processor(frame, frame_cnt):
         OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
     frame = cv.resize(frame, None, fx=INPUT_SCALE, fy=INPUT_SCALE)  # !!!
-    frame = cv.transpose(frame)
+    if need_transpose:
+        frame = cv.transpose(frame)
     frame = cv.flip(frame, 1)
 
     get_start_area_data(frame)
@@ -190,14 +190,14 @@ def frame_processor(frame, frame_cnt):
 
     cv.rectangle(frame, (StartArea.x, StartArea.y), (StartArea.x + StartArea.w, StartArea.y + StartArea.h), (255, 0, 0), 1)
     # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
-    cv.putText(frame, f"{status}", (200, 200), cv.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 3)
+    cv.putText(frame, f"{status}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
 
     r = re.search('B{7}B*[MB]{0,7}E{15}$', status_history)  # B{7}[MB]*E{7}$
     logging.debug(f"{frame_cnt=}:  {status=}, {status_history=}")
     if r:
-        print(f"hit!! {frame_cnt=} {status_history=} {r.span()} {r.string}")
-        logging.debug(f"hit!! {frame_cnt=} {status_history=} {r.span()=} ")
-        write_swing_clip(r)
+        out_file_name = write_swing_clip(r)
+        print(f"hit!!!!  {frame_cnt=} {out_file_name=}")
+        logging.debug(f"Hit: {r.string=}  {status_history=} {r.span()=}")
         status_history = ''
         frames_buffer.clear()
 
