@@ -56,7 +56,7 @@ def find_best_threshold(gray):
     return None
 
 
-def get_start_area_data(frame):
+def get_start_area(frame):
     global ROI_CENTER
     if not OnePointZone.zone_is_defined():
         return
@@ -174,12 +174,13 @@ def frame_processor(frame, frame_cnt):
     if frame_cnt == 1:
         OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
-    frame = cv.resize(frame, None, fx=INPUT_SCALE, fy=INPUT_SCALE)  # !!!
+    if INPUT_SCALE != 1.0:
+        cv.resize(frame, None, fx=INPUT_SCALE, fy=INPUT_SCALE)  # !!!
     if need_transpose:
         frame = cv.transpose(frame)
     frame = cv.flip(frame, 1)
 
-    get_start_area_data(frame)
+    get_start_area(frame)
     if StartArea.x is None:
         return frame
 
