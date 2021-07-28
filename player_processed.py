@@ -63,8 +63,8 @@ def main():
                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         OnePointZone.new_frame(out_frame)
-        if zone_draw_mode:
-            OnePointZone.draw_zone(out_frame)
+        # if zone_draw_mode:
+        # OnePointZone.draw_zone(out_frame)
 
         cv.imshow(f'out_frame', out_frame)
 

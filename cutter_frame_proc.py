@@ -9,8 +9,8 @@ import numpy as np
 
 from zone import OnePointZone
 
-swing_clip_prefix = "video/swings/"
-need_transpose = True
+SWING_CLIP_PREFIX = "video/swings/"
+NEED_TRANSPOSE = True
 # need_transpose = False
 INPUT_SCALE = 0.7
 
@@ -151,13 +151,13 @@ frames_buffer = deque(maxlen=FRAME_BUFF_SZ)
 
 
 def write_swing_clip(r):
-    global status_history, frames_buffer, swing_clip_prefix
+    global status_history, frames_buffer, SWING_CLIP_PREFIX
     start_pos, end_pos = r.span()
     frames_to_write = min(end_pos - start_pos, MAX_CLIP_SZ)
     frames_to_skip = len(frames_buffer) - frames_to_write
     for i in range(frames_to_skip):
         frames_buffer.popleft()
-    out_file_name = f"{swing_clip_prefix}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"  # f"{swing_clip_prefix}{swing_clip_cnt}.avi"
+    out_file_name = f"{SWING_CLIP_PREFIX}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"  # f"{swing_clip_prefix}{swing_clip_cnt}.avi"
     out = None
     for i in range(frames_to_write):
         out_frame = frames_buffer.popleft()
@@ -176,7 +176,7 @@ def frame_processor(frame, frame_cnt):
 
     if INPUT_SCALE != 1.0:
         cv.resize(frame, None, fx=INPUT_SCALE, fy=INPUT_SCALE)  # !!!
-    if need_transpose:
+    if NEED_TRANSPOSE:
         frame = cv.transpose(frame)
     frame = cv.flip(frame, 1)
 
