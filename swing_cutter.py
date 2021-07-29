@@ -38,7 +38,7 @@ class FrameProcessor:
         if not self.start_zone.ball_is_clicked():
             return frame
         if not self.start_zone.zone_is_found():
-            if not self.start_zone.find_zone(frame):
+            if not self.start_zone.get_zone(frame):
                 print(" Error!!! ball was clicked however Start Zone cannot be found!")
                 return frame
 
@@ -102,7 +102,8 @@ class ROI:
 
 class StartZone:
     BLUR_LEVEL: int = 3
-    MAX_BALL_SIZE: int = int(30 * FrameProcessor.INPUT_SCALE)  # how far from click_xy we should search for ball contour
+    MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)  # how far from click_xy we should search for ball contour
+    ZONE_BALL_RATIO: int = 5
     click_xy: Tuple[int, int] = None
     ball_contour: np.ndarray = None
     ball_area: float = None
@@ -126,57 +127,47 @@ class StartZone:
             self.load()
         cv.setMouseCallback(win_name, self.mouse_callback)
 
-    def xy_zone_2_frame(self, zone_xy):
-        return zone_xy[0] + self.ball_roi.x, zone_xy[1] + self.ball_roi.y
-
-    def xy_frame_2_zone(self, frame_xy):
-        return frame_xy[0] - self.ball_roi.x, frame_xy[1] - self.ball_roi.y
-
-    def get_closest_brightest(self, gray):
-        # return coordinate of closest to click_xy point which is == to max(gray)
-        click_x, click_y = self.xy_frame_2_zone(self.click_xy)
-        brightest_points = np.where(gray == np.amax(gray))  # tuple of 2 arrays: x[] and y[] of grightest points
-        brightest_points_lst = list(zip(brightest_points[0], brightest_points[1]))  # list of tuples (x,y) of brightest points
-        closest_point = sorted(brightest_points_lst, key=lambda xy: np.sqrt((xy[0] - click_x) ** 2 + (xy[1] - click_y)))[0]
-        logging.debug(f"get_closest_brightest for {self.click_xy=} ({click_x=},{click_y=}) -->  {closest_point=}")
-        self.closest_brightest = int(closest_point[0]), int(closest_point[1])
-        return self.closest_brightest
-
-    def find_zone(self, frame) -> bool:
-        # try to set up Start Zone (ball, border).
-        # return True if ok (found and set up), else - False
-        if not self.click_xy:  # ball was not clicked yet
-            return False
-
-        # set ball_roi: ROI for potential ball area
-        self.ball_roi = ROI(frame.shape, self.click_xy, self.MAX_BALL_SIZE * 5)
-        # click_x, click_y = self.click_xy
-        # x_max, y_max = frame.shape[1], frame.shape[0]
-        # self.ball_roi_x, self.ball_roi_y = max(click_x - self.MAX_BALL_SIZE, 0), max(click_y - self.MAX_BALL_SIZE, 0)
-        # self.ball_roi_w, self.ball_roi_h = min(x_max - self.ball_roi_x, self.MAX_BALL_SIZE * 2), min(y_max - self.ball_roi_y, self.MAX_BALL_SIZE * 2)
-        self.ball_roi_img = self.ball_roi.extract_roi(frame)
-        # frame[self.ball_roi_y:self.ball_roi_y + self.ball_roi_h, self.ball_roi_x:self.ball_roi_x + self.ball_roi_w]
-
+    def preprocess_image(self, roi_img):
         # prepare image of ball_roi: bgr->gray->blur->open->close
-        gray = cv.cvtColor(self.ball_roi_img, cv.COLOR_BGR2GRAY)
+        gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
         gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
         kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
         gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
         gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
         Util.show_img(gray, "StartArea: gray", 1)
+        return gray
 
-        brightest_xy = self.get_closest_brightest(gray)  # find brightest point near click_xy
+    def get_zone(self, frame) -> bool:
+        # try to set up Start Zone (ball, border).
+        # return True if ok (found and set up), else - False
+        if not self.click_xy:  # ball was not clicked yet
+            return False
+
+        self.ball_roi = ROI(frame.shape, self.click_xy, self.MAX_BALL_SIZE * 5)
+        self.ball_roi_img = self.ball_roi.extract_roi(frame)
+
+        # prepare image of ball_roi: bgr->gray->blur->open->close
+        # gray = cv.cvtColor(self.ball_roi_img, cv.COLOR_BGR2GRAY)
+        # gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
+        # kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
+        # gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
+        # gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
+
+        gray = self.preprocess_image(self.ball_roi_img)
+        # Util.show_img(gray, "StartArea: gray", 1)
+        # brightest_xy = self.get_closest_brightest(gray)  # find brightest point near click_xy
 
         # StartArea.thresh_val, thresh_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-        thresh = self.get_best_threshold(gray, brightest_xy)
+        thresh = self.get_best_threshold(gray)  # , brightest_xy)
         if not thresh:  # can't found ball contour
             return False
         self.thresh_val, thresh_img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
         Util.show_img(thresh_img, "StartArea: thresh_img", 1)
 
         contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        cont_lst = [cont for cont in contours
-                    if cv.pointPolygonTest(cont, brightest_xy, measureDist=False) >= 0]
+        cont_lst = contours
+        # cont_lst = [cont for cont in contours
+        #             if cv.pointPolygonTest(cont, brightest_xy, measureDist=False) >= 0]
         if len(cont_lst) == 1:
             x, y, w, h = cv.boundingRect(cont_lst[0])
             d = max(w, h)
@@ -186,12 +177,8 @@ class StartZone:
             # found ball contour: include click_xy, not as big as total ball_roi image
             self.ball_contour = cont_lst[0]
             self.ball_area = cv.contourArea(self.ball_contour)
-            # self.zone_x, self.zone_y = ball_roi_x + x - 2 * d, ball_roi_y + y - 2 * d  # 2 cells aside
-            # self.zone_w, self.zone_h = 5 * d, 5 * d  # 2 cells + original cell + 2 cells
-            # self.zone_x, self.zone_y = self.xy_zone_2_frame((x - 2 * self.MAX_BALL_SIZE, y - 2 * self.MAX_BALL_SIZE))  # 2 cells aside
-            # self.zone_w, self.zone_h = 5 * self.MAX_BALL_SIZE, 5 * self.MAX_BALL_SIZE  # 2 cells + original cell + 2 cells
-            zone_center_point = (int(x + d / 2), int(y + d / 2))
-            self.zone_roi = ROI(frame.shape, zone_center_point, self.MAX_BALL_SIZE * 5)
+            zone_center_point = self.xy_zone_2_frame((int(x + d / 2), int(y + d / 2)))
+            self.zone_roi = ROI(frame.shape, zone_center_point, self.MAX_BALL_SIZE * self.ZONE_BALL_RATIO)
             logging.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=}")
             return True
         elif len(cont_lst) == 0:  # not found any contour around click_xy
@@ -201,25 +188,11 @@ class StartZone:
                 f"!!!! Error !!! several contours include one point. {self.MAX_BALL_SIZE=}, {cont_lst}=")
         return False
 
-    def zone_is_found(self):
-        return False if self.zone_roi is None else True
-
-    def ball_is_clicked(self):
-        return False if self.click_xy is None else True
-
     @staticmethod
-    def mouse_callback(event, x, y, flags, param):
-        if event == cv.EVENT_LBUTTONDOWN:
-            StartZone.zone_reset()
-            StartZone.click_xy = (x, y)
-        if event == cv.EVENT_RBUTTONDOWN:
-            StartZone.zone_reset()
-
-    @staticmethod
-    def get_best_threshold(gray, point_xy):
+    def get_best_threshold(gray):  # , point_xy):
         # going through threshold levels to find one which include point_xy and has got a max contour area
         level_results = []
-        for thresh in range(50, 200, 20):
+        for thresh in range(50, 200, 5):
             _, img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
             contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
             all_cont_cnt = len(contours)
@@ -256,15 +229,16 @@ class StartZone:
 
         # roi = frame[self.zone_y:self.zone_y + self.zone_h, self.zone_x:self.zone_x + self.zone_w]
         roi_img = self.zone_roi.extract_roi(frame)
-        gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
-        gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
-        kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
-        gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
-        gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
-        # Util.show_img(gray, "gray", 1)
+        # gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
+        # gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
+        # kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
+        # gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
+        # gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
+        gray = self.preprocess_image(roi_img)
+        Util.show_img(gray, "Stream:   gray", 1)
 
         _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
-        # Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+        Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
         contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         contours = [cnt for cnt in contours if self.ball_area * 0.5 < cv.contourArea(cnt)]
@@ -284,11 +258,25 @@ class StartZone:
         self.zone_state = 'M'
         return self.zone_state
 
+    def zone_is_found(self):
+        return False if self.zone_roi is None else True
+
+    def ball_is_clicked(self):
+        return False if self.click_xy is None else True
+
+    @staticmethod
+    def mouse_callback(event, x, y, flags, param):
+        if event == cv.EVENT_LBUTTONDOWN:
+            StartZone.zone_reset()
+            StartZone.click_xy = (x, y)
+        if event == cv.EVENT_RBUTTONDOWN:
+            StartZone.zone_reset()
+
     def draw(self, frame):
-        cv.rectangle(frame, (self.zone_roi.x, self.zone_roi.y), (self.zone_roi.x + self.zone_roi.w, self.zone_roi.y + self.zone_roi.h), (255, 0, 0),
-                     1)
+        cv.rectangle(frame,
+                     (self.zone_roi.x, self.zone_roi.y), (self.zone_roi.x + self.zone_roi.w, self.zone_roi.y + self.zone_roi.h), (255, 0, 0), 1)
         cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
-        cv.drawMarker(frame, self.xy_zone_2_frame(self.closest_brightest), (0, 255, 0), cv.MARKER_CROSS, 20, 1)
+        # cv.drawMarker(frame, self.xy_zone_2_frame(self.closest_brightest), (0, 255, 0), cv.MARKER_CROSS, 20, 1)
         # # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
         cv.putText(frame, f"{self.zone_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
         return frame
@@ -298,6 +286,22 @@ class StartZone:
 
     def save(self):
         pass
+
+    def xy_zone_2_frame(self, zone_xy):
+        return zone_xy[0] + self.ball_roi.x, zone_xy[1] + self.ball_roi.y
+
+    def xy_frame_2_zone(self, frame_xy):
+        return frame_xy[0] - self.ball_roi.x, frame_xy[1] - self.ball_roi.y
+
+    # def get_closest_brightest(self, gray):
+    #     # return coordinate of closest to click_xy point which is == to max(gray)
+    #     click_x, click_y = self.xy_frame_2_zone(self.click_xy)
+    #     brightest_points = np.where(gray == np.amax(gray))  # tuple of 2 arrays: x[] and y[] of grightest points
+    #     brightest_points_lst = list(zip(brightest_points[0], brightest_points[1]))  # list of tuples (x,y) of brightest points
+    #     closest_point = sorted(brightest_points_lst, key=lambda xy: np.sqrt((xy[0] - click_x) ** 2 + (xy[1] - click_y) ** 2))[0]
+    #     logging.debug(f"get_closest_brightest for {self.click_xy=} ({click_x=},{click_y=}) -->  {closest_point=}")
+    #     self.closest_brightest = int(closest_point[0]), int(closest_point[1])
+    #     return self.closest_brightest
 
 
 class History:
@@ -310,7 +314,7 @@ class History:
     def save_state(cls, state: str, frame):
         cls.states_string += state
         cls.frames_buffer.append(frame.copy())
-        logging.debug(f"{len(cls.frames_buffer)=}")
+        # logging.debug(f"{len(cls.frames_buffer)=}")
 
     @classmethod
     def write_swing(cls, r):

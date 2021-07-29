@@ -16,7 +16,7 @@ from start_zone import StartZone
 from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
 # INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-INPUT_SOURCE = 'video/0.avi'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) phone-range-2.mp4
+INPUT_SOURCE = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) phone-range-2.mp4
 # INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 OUT_FILE_NAME = 'video/out2.avi'
@@ -37,7 +37,7 @@ def main():
 
     input_fs = FrameStream(INPUT_SOURCE)
     out_fs = WriteStream(OUT_FILE_NAME, fps=WRITE_FPS)
-    logging.debug(f"Player started: {INPUT_SOURCE=} out_file={OUT_FILE_NAME if WRITE_MODE else '---'}  {frame_proc.processor_name=}")
+    logging.debug(f"\n\n\nPlayer started: {INPUT_SOURCE=} out_file={OUT_FILE_NAME if WRITE_MODE else '---'}  {frame_proc.processor_name=}")
 
     while True:
         frame, frame_name, frame_cnt = input_fs.next_frame()
