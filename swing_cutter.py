@@ -5,7 +5,6 @@ import logging
 import cv2 as cv
 import numpy as np
 
-# from start_zone import StartZone, StartBall
 from util import Util
 
 class FrameProcessor:
@@ -31,14 +30,14 @@ class FrameProcessor:
         if FrameProcessor.NEED_FLIP:
             frame = cv.flip(frame, 1)
 
-        if self.start_zone.click_xy is None:
+        if self.start_zone.click_xy is None: # todo change
             return frame
-        if self.start_zone.zone_x is None:
+        if self.start_zone.zone_x is None: # todo change
             if not self.start_zone.find_zone(frame):
                 print(" Error!!! ball was clicked however Start Zone cannot be found!")
                 return frame
 
-        start_zone_state = self.start_zone.current_state(frame)
+        start_zone_state = self.start_zone.get_current_state(frame)
         History.save_state(start_zone_state, frame)
 
         r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
@@ -77,6 +76,7 @@ class StartZone:
     thresh_val: float = None
     zone_x, zone_y, zone_w, zone_h = None, None, None, None  # int
     ball_roi, ball_roi_x, ball_roi_y, ball_roi_w, ball_roi_h = None, None, None, None, None
+    zone_state = None
 
     def __init__(self, win_name, need_load=False):
         self.win_name = win_name
@@ -106,11 +106,11 @@ class StartZone:
         # Util.show_img(gray, "StartArea: gray", 1)
 
         # StartArea.thresh_val, thresh_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-        thresh = self.find_best_threshold(gray)
+        thresh = self.get_best_threshold(gray)
         if not thresh:  # can't found ball contour
             return False
         self.thresh_val, thresh_img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
-        # Util.show_img(thresh_img, "StartArea: thresh_img", 1)
+        Util.show_img(thresh_img, "StartArea: thresh_img", 1)
 
         contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         cont_lst = [cont for cont in contours
@@ -137,7 +137,7 @@ class StartZone:
                 f"!!!! Error !!! several contours include one point. {self.MAX_BALL_SIZE=}, {cont_lst}=")
         return False
 
-    def is_found(self):
+    def zone_is_found(self):
         return False if self.zone_x is None else True
 
     @staticmethod
@@ -149,7 +149,7 @@ class StartZone:
             StartZone.click_xy = None
             StartZone.zone_x = None
 
-    def find_best_threshold(self, gray):
+    def get_best_threshold(self, gray):
         # going through threshold levels to find one which include click_xy and has got a max contour area
         level_results = []
         for thresh in range(50, 200, 5):
@@ -178,15 +178,48 @@ class StartZone:
             return level_results[0]["thresh"]
         return None
 
-    def current_state(self, frame) -> str:
+    def get_current_state(self, frame) -> str:
         # analyze current state of StartArea: 'E' - empty, 'B' - ball, 'M' - mess
-        return 'E'
+        roi = frame[self.zone_y:self.zone_y + self.zone_h, self.zone_x:self.zone_x + self.zone_w]
+        gray = cv.cvtColor(roi, cv.COLOR_BGR2GRAY)
+        gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
+        kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
+        gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
+        gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
+        # Util.show_img(gray, "gray", 1)
+
+        _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
+        Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+
+        contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        contours = [cnt for cnt in contours if self.ball_area * 0.5 < cv.contourArea(cnt)]
+        all_cnt = len(contours)
+        contours = [cnt for cnt in contours if cv.contourArea(cnt) < self.ball_area * 2]
+        logging.debug(f"get_status: found contours: all = {all_cnt} not_big = {len(contours)} ")
+
+        if all_cnt == 0:
+            self.zone_state = 'E'
+            return self.zone_state
+        if len(contours) == 1 and not self.is_touched_border(contours[0]):
+            match_rate = cv.matchShapes(contours[0], self.ball_contour, 1, 0)
+            logging.debug(f" {match_rate=}")
+            if match_rate < 0.5:
+                self.zone_state = 'B'
+                return self.zone_state
+        self.zone_state = 'M'
+        return self.zone_state
+
+    def is_touched_border(self,contour):
+        x, y, w, h = cv.boundingRect(contour)
+        return True \
+            if x == self.zone_x or y == self.zone_y or x + w == self.zone_x + self.zone_w or y + h == self.zone_y + self.zone_h \
+            else False
 
     def draw(self, frame):
         cv.rectangle(frame, (self.zone_x, self.zone_y), (self.zone_x + self.zone_w, self.zone_y + self.zone_h), (255, 0, 0), 1)
         cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
         # # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
-        # cv.putText(frame, f"{status}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
+        cv.putText(frame, f"{self.zone_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
         return frame
 
     def load(self):
