@@ -7,72 +7,55 @@
 #   left-mouse - add corner to zone, right-mose - reset zone
 #   '1'-'9' - delays
 
+import logging
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 import datetime
-import logging
-
 import cv2 as cv
+from util import FrameStream, WriteStream
+from start_zone import StartZone
+# from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
-from util import FrameStream
-from zone import OnePointZone
+# INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
+INPUT_SOURCE = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) black3 - ne vidno kuda letit
+# INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
-from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
+OUT_FILE_NAME = 'video/out2.avi'
+WRITE_MODE = True # if INPUT_SOURCE[0:4] == 'rtsp' else False
+WRITE_FPS = 25
 
-# inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-inp_source_name = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) black3 - ne vidno kuda letit
-# inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
-
-out_file_name = 'video/out2.avi'
-
-
-
-frame_mode_initial = False
-# frame_mode_initial = True
-
-write_mode = True if inp_source_name[0:4] == 'rtsp' else False
-# write_mode = False
-
-delay_initial = 1
-delay_multiplier = 60
-inp_frame_shape = (1280, 720)  # (1920, 1080)
+FRAME_MODE_INITIAL = False
+ZONE_DRAW_INITIAL = True
+DELAY = 5  # delay in normal 'g'-mode
 
 
 def main():
-    frame_proc = FrameProcessor(inp_source_name)
+    frame_proc = FrameProcessor(INPUT_SOURCE)
+    frame_mode = FRAME_MODE_INITIAL
+    zone_draw_mode = ZONE_DRAW_INITIAL  # True - draw active zone (corners_lst) on all images
 
-
-    frame_mode = frame_mode_initial
-
-    zone_draw_mode = True  # True - draw active zone (corners_lst) on all images
     cv.namedWindow('out_frame')
-    OnePointZone.zone_init('out_frame', need_load=False)
+    start_zone = StartZone('out_frame', need_load=False)
 
-    delay = delay_initial
-    fs = FrameStream(inp_source_name)
-    fourcc = cv.VideoWriter_fourcc(*'XVID')
-    out = None
+    input_fs = FrameStream(INPUT_SOURCE)
+    out_fs = WriteStream(OUT_FILE_NAME, fps=WRITE_FPS)
+    logging.debug(f"Player started: {INPUT_SOURCE=} out_file={OUT_FILE_NAME if WRITE_MODE else '---'}  {frame_proc.processor_name=}")
 
     while True:
-        frame, frame_name, frame_cnt = fs.next_frame()
+        frame, frame_name, frame_cnt = input_fs.next_frame()
         if frame is None:
             break
-        out_frame = frame_proc.process_frame(frame, frame_cnt) if frame_proc else frame
-        cv.putText(out_frame, f"D:{delay / delay_multiplier:.0f}/{frame_cnt}", (5, 12),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-        OnePointZone.new_frame(out_frame)
-        # if zone_draw_mode:
-        # OnePointZone.draw_zone(out_frame)
+        out_frame = frame_proc.process_frame(frame, frame_cnt)
+
+        cv.putText(out_frame, f"{frame_cnt}", (5, 12), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        if zone_draw_mode:
+            out_frame = start_zone.draw(out_frame)
+        if WRITE_MODE:
+            out_fs.write(out_frame)
 
         cv.imshow(f'out_frame', out_frame)
-
-        if write_mode:
-            if not out:
-                out_shape = (out_frame.shape[1], out_frame.shape[0])
-                out = cv.VideoWriter(out_file_name, fourcc, 20.0, out_shape)
-            out.write(out_frame)
-
-        ch = cv.waitKey(0 if frame_mode else delay)
+        ch = cv.waitKey(0 if frame_mode else DELAY)
         if ch == ord('q'):
             break
         elif ch == ord('g'):
@@ -82,36 +65,30 @@ def main():
             frame_mode = True
             continue
         elif ch == ord('s'):
-            dt = datetime.datetime.now()
-            snap_fname = f'img/snap_{dt.strftime("%d%m%Y_%H%M%S")}.png'
-            cv.imwrite(snap_fname, out_frame)
+            snap_file_name = f'img/snap_{datetime.datetime.now().strftime("%d%m%Y_%H%M%S")}.png'
+            cv.imwrite(snap_file_name, out_frame)
             continue
-        elif ord('0') < ch <= ord('9'):
-            delay = delay_multiplier * (ch - ord('0'))
-            frame_mode = False
-            print(f"{delay=}")
         elif ch == ord('z'):
             zone_draw_mode = not zone_draw_mode
 
-    OnePointZone.zone_save()
-    frame_proc.end_stream(frame_cnt)
+    print(f"Finish. Duration={input_fs.total_time():.0f} sec, {input_fs.frame_cnt} frames,  fps={input_fs.fps():.1f} f/s")
 
-    print(
-        f"Finish. Duration={fs.total_time():.0f} sec, {fs.frame_cnt} frames,  fps={fs.fps():.1f} f/s")
-
-    del fs
-    if write_mode:
-        out.release()
+    start_zone.save()
+    del frame_proc
+    del input_fs
+    if WRITE_MODE:
+        del out_fs
     cv.destroyAllWindows()
 
-# uncomment if not going to import external FrameProcessor
-# class FrameProcessor:  # dummy
-#     def __init__(self, file_name):
-#         pass
-#     def process_frame(self, frame, frame_cnt, file_name=""):
-#         return frame
-#     def end_stream(self, frame_cnt):
-#         pass
+
+class FrameProcessor:  # dummy, if not going to import external FrameProcessor
+    def __init__(self, file_name):
+        self.processor_name = "dummy"
+        pass
+    def process_frame(self, frame, frame_cnt, file_name=""):
+        return frame
+    def end_stream(self, frame_cnt):
+        pass
 
 if __name__ == '__main__':
     main()

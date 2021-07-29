@@ -8,7 +8,7 @@ import cv2 as cv
 
 param_fname = "param.json"
 
-logging.basicConfig(filename='debug.log', level=logging.DEBUG)
+
 
 
 class OnePointZone:

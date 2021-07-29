@@ -33,6 +33,7 @@ class History:
 class FrameProcessor:
     def __init__(self, filename=""):
         self.filename = filename
+        self.processor_name = __file__
         print("swing cutter proc")
 
     def process_frame(self, frame, frame_cnt):
@@ -59,5 +60,5 @@ class FrameProcessor:
             History.write_swing(r)
             History.reset()
 
-    def end_stream(self, frame_cnt):
+    def __del__(self, frame_cnt):
         pass
