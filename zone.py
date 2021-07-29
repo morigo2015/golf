@@ -4,11 +4,10 @@ import json
 import logging
 
 import cv2 as cv
+
 # import numpy as np
 
 param_fname = "param.json"
-
-
 
 
 class OnePointZone:

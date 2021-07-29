@@ -8,20 +8,20 @@
 #   '1'-'9' - delays
 
 import logging
-logging.basicConfig(filename='debug.log', level=logging.DEBUG)
-
 import datetime
 import cv2 as cv
+
 from util import FrameStream, WriteStream
 from start_zone import StartZone
-# from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
+from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 # INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
 INPUT_SOURCE = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) black3 - ne vidno kuda letit
 # INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 OUT_FILE_NAME = 'video/out2.avi'
-WRITE_MODE = True # if INPUT_SOURCE[0:4] == 'rtsp' else False
+WRITE_MODE = True  # if INPUT_SOURCE[0:4] == 'rtsp' else False
 WRITE_FPS = 25
 
 FRAME_MODE_INITIAL = False
@@ -30,12 +30,11 @@ DELAY = 5  # delay in normal 'g'-mode
 
 
 def main():
-    frame_proc = FrameProcessor(INPUT_SOURCE)
     frame_mode = FRAME_MODE_INITIAL
     zone_draw_mode = ZONE_DRAW_INITIAL  # True - draw active zone (corners_lst) on all images
 
     cv.namedWindow('out_frame')
-    start_zone = StartZone('out_frame', need_load=False)
+    frame_proc = FrameProcessor(INPUT_SOURCE, win_name='out_frame')
 
     input_fs = FrameStream(INPUT_SOURCE)
     out_fs = WriteStream(OUT_FILE_NAME, fps=WRITE_FPS)
@@ -46,11 +45,10 @@ def main():
         if frame is None:
             break
 
-        out_frame = frame_proc.process_frame(frame, frame_cnt)
+        out_frame = frame_proc.process_frame(frame, frame_cnt, zone_draw_mode)
 
         cv.putText(out_frame, f"{frame_cnt}", (5, 12), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        if zone_draw_mode:
-            out_frame = start_zone.draw(out_frame)
+
         if WRITE_MODE:
             out_fs.write(out_frame)
 
@@ -73,7 +71,6 @@ def main():
 
     print(f"Finish. Duration={input_fs.total_time():.0f} sec, {input_fs.frame_cnt} frames,  fps={input_fs.fps():.1f} f/s")
 
-    start_zone.save()
     del frame_proc
     del input_fs
     if WRITE_MODE:
@@ -81,14 +78,17 @@ def main():
     cv.destroyAllWindows()
 
 
-class FrameProcessor:  # dummy, if not going to import external FrameProcessor
-    def __init__(self, file_name):
-        self.processor_name = "dummy"
-        pass
-    def process_frame(self, frame, frame_cnt, file_name=""):
-        return frame
-    def end_stream(self, frame_cnt):
-        pass
+if "FrameProcessor" not in globals():
+    class FrameProcessor:  # dummy, if not going to import external FrameProcessor
+        def __init__(self, file_name=None, win_name=None):
+            self.processor_name = "dummy"
+            pass
+
+        def process_frame(self, frame, frame_cnt, zone_draw_mode=False):
+            return frame
+
+        def end_stream(self, frame_cnt):
+            pass
 
 if __name__ == '__main__':
     main()
