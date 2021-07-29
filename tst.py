@@ -2,9 +2,11 @@
 
 class AA:
     bb = "just str"
+    cc = "cc"
     def __init__(self,par):
         self.par = par
         print(f"{par=} {AA.bb=} {self.bb=}")
+
 
 class BB:
     c = 1
