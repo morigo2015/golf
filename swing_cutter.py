@@ -1,4 +1,3 @@
-
 import re
 import cv2 as cv
 
@@ -9,11 +8,12 @@ NEED_TRANSPOSE = True
 NEED_FLIP = True
 INPUT_SCALE = 0.7
 
+
 class History:
     states_string: str = ""
 
     @classmethod
-    def save_state(cls, state:str, frame):
+    def save_state(cls, state: str, frame):
         # status_history += status
         # frames_buffer.append(frame.copy())
         # logging.debug(f"{len(frames_buffer)=}")
@@ -31,9 +31,12 @@ class History:
 
 
 class FrameProcessor:
+    def __init__(self, filename=""):
+        self.filename = filename
+        print("swing cutter proc")
 
-    @staticmethod
-    def process_frame(self, frame, frame_cnt, file_name=""):
+    def process_frame(self, frame, frame_cnt):
+
         if frame_cnt == 1:
             pass  # OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
 
@@ -56,7 +59,5 @@ class FrameProcessor:
             History.write_swing(r)
             History.reset()
 
-    @staticmethod
-    def end_stream(self):
+    def end_stream(self, frame_cnt):
         pass
-

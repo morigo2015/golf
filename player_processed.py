@@ -15,13 +15,16 @@ import cv2 as cv
 
 from util import FrameStream
 from zone import OnePointZone
-from swing_cutter import FrameProcessor
+
+from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
 inp_source_name = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) black3 - ne vidno kuda letit
 # inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 out_file_name = 'video/out2.avi'
+
+
 
 frame_mode_initial = False
 # frame_mode_initial = True
@@ -33,21 +36,11 @@ delay_initial = 1
 delay_multiplier = 60
 inp_frame_shape = (1280, 720)  # (1920, 1080)
 
-try:
-    from swing_cutter import FrameProcessor  # frame_processor, end_stream_processor # zone_frame_proc
-except ImportError as error:
-    logging.debug("There is no file 'frame_processor.py' so no processors will be used")
-    class FrameProcessor:  # dummy
-        @staticmethod
-        def process_frame(frame, frame_cnt, file_name=""):
-            return frame
-
-        @staticmethod
-        def end_stream():
-            pass
-
 
 def main():
+    frame_proc = FrameProcessor(inp_source_name)
+
+
     frame_mode = frame_mode_initial
 
     zone_draw_mode = True  # True - draw active zone (corners_lst) on all images
@@ -63,7 +56,7 @@ def main():
         frame, frame_name, frame_cnt = fs.next_frame()
         if frame is None:
             break
-        out_frame = frame_proc(frame, frame_cnt) if frame_proc else frame
+        out_frame = frame_proc.process_frame(frame, frame_cnt) if frame_proc else frame
         cv.putText(out_frame, f"D:{delay / delay_multiplier:.0f}/{frame_cnt}", (5, 12),
                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
@@ -101,8 +94,7 @@ def main():
             zone_draw_mode = not zone_draw_mode
 
     OnePointZone.zone_save()
-    if end_stream_proc:
-        end_stream_proc(frame_cnt)
+    frame_proc.end_stream(frame_cnt)
 
     print(
         f"Finish. Duration={fs.total_time():.0f} sec, {fs.frame_cnt} frames,  fps={fs.fps():.1f} f/s")
@@ -112,6 +104,14 @@ def main():
         out.release()
     cv.destroyAllWindows()
 
+# uncomment if not going to import external FrameProcessor
+# class FrameProcessor:  # dummy
+#     def __init__(self, file_name):
+#         pass
+#     def process_frame(self, frame, frame_cnt, file_name=""):
+#         return frame
+#     def end_stream(self, frame_cnt):
+#         pass
 
 if __name__ == '__main__':
     main()
