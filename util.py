@@ -144,6 +144,25 @@ class FrameStream:
         if self.mode == 'video':
             self.cap.release()
 
+class WriteStream:
+    # запись в файл, отложенное открытие потока (до первого кадра для определения shape)
+
+    def __init__(self, file_name, fps=20.0, fourcc='XVID'):
+        self.file_name = file_name
+        self.fourcc = cv.VideoWriter_fourcc(*fourcc)
+        self.fps = fps
+        self.out = None
+
+    def write(self, out_frame):
+        if not self.out:
+            out_shape = (out_frame.shape[1], out_frame.shape[0])
+            self.out = cv.VideoWriter(self.file_name, self.fourcc, self.fps, out_shape)
+        self.out.write(out_frame)
+
+    def __del__(self):
+        self.out.release()
+        pass
+
 # -------------------------------------------------------------------------------------------------------------
 
 def main():

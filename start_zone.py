@@ -14,6 +14,10 @@ class StartZone:
     thresh_val: float = None
     x, y, w, h = None, None, None, None  # int
 
+    def __init__(self, win_name, need_load=False):
+        self.win_name = win_name
+        # load ...
+
     def find(self, frame) -> bool:
         # try to set up Start Zone (ball, border).
         # return True if ok (found and set up), else - False
@@ -29,3 +33,5 @@ class StartZone:
         # cv.putText(frame, f"{status}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
         return frame
 
+    def save(self):
+        pass
