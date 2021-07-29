@@ -9,13 +9,16 @@
 
 
 import datetime
+import logging
+
 import cv2 as cv
 
 from util import FrameStream
 from zone import OnePointZone
+from swing_cutter import FrameProcessor
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-inp_source_name = 'video/phone-range-2.mp4' # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) black3 - ne vidno kuda letit
+inp_source_name = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) black3 - ne vidno kuda letit
 # inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 out_file_name = 'video/out2.avi'
@@ -29,17 +32,19 @@ write_mode = True if inp_source_name[0:4] == 'rtsp' else False
 delay_initial = 1
 delay_multiplier = 60
 inp_frame_shape = (1280, 720)  # (1920, 1080)
-need_frame_processor = True  # False
 
-frame_proc_fname = None  # no proc
-end_stream_proc = None
-if need_frame_processor:
-    try:
-        from cutter_frame_proc import frame_processor, end_stream_processor # zone_frame_proc
-        frame_proc = frame_processor
-        end_stream_proc = end_stream_processor
-    except ImportError as error:
-        print("There is no file 'frame_processor.py' so no processors will be used")
+try:
+    from swing_cutter import FrameProcessor  # frame_processor, end_stream_processor # zone_frame_proc
+except ImportError as error:
+    logging.debug("There is no file 'frame_processor.py' so no processors will be used")
+    class FrameProcessor:  # dummy
+        @staticmethod
+        def process_frame(frame, frame_cnt, file_name=""):
+            return frame
+
+        @staticmethod
+        def end_stream():
+            pass
 
 
 def main():
@@ -106,6 +111,7 @@ def main():
     if write_mode:
         out.release()
     cv.destroyAllWindows()
+
 
 if __name__ == '__main__':
     main()

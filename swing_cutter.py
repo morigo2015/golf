@@ -31,9 +31,8 @@ class History:
 
 
 class FrameProcessor:
-    def __init__(self):
-        pass
 
+    @staticmethod
     def process_frame(self, frame, frame_cnt, file_name=""):
         if frame_cnt == 1:
             pass  # OnePointZone.reset_zone_point()  # it points to ball so we have to re-init it each time
@@ -57,6 +56,7 @@ class FrameProcessor:
             History.write_swing(r)
             History.reset()
 
+    @staticmethod
     def end_stream(self):
         pass
 
