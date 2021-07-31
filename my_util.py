@@ -178,7 +178,7 @@ class WriteStream:
 
     def __del__(self):
         self.out.release()
-        logging.debug(f"file {self.file_name} released")
+        # logging.debug(f"file {self.file_name} released")
 
 # -------------------------------------------------------------------------------------------------------------
 

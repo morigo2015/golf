@@ -6,6 +6,7 @@ import datetime
 
 import cv2 as cv
 import numpy as np
+from playsound import playsound
 
 from my_util import *  # Util, FrameStream, WriteStream
 
@@ -42,10 +43,13 @@ class FrameProcessor:
 
         start_zone_state = self.start_zone.get_current_state(frame)
         History.save_state(start_zone_state, frame)
+        if start_zone_state == 'B':
+            self.start_zone.update_thresh(frame)
 
         r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
         if r:
             History.write_swing(r)
+            playsound('sound/Golf_Hole.mp3')
             History.reset()
 
         if zone_draw_mode:
@@ -128,6 +132,7 @@ class StartZone:
         self.zone_roi: ROI_ = None
         self.zone_state: str_ = None
         self.win_name: str_ = win_name
+        self.need_reset = False  # reset is delayed till next frame to save consistency between ball_is_clicked()/zone_is_found()/get_current_state()
         if need_load:
             self.load()
         cv.setMouseCallback(win_name, self.__mouse_callback, param=self)
@@ -144,7 +149,7 @@ class StartZone:
         kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
         gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
         gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
-        Util.show_img(gray, f"{roi_name}: preprocessed(gray)", 1)
+        # Util.show_img(gray, f"{roi_name}: preprocessed(gray)", 1)
         return gray
 
     def find_start_zone(self, frame: NDARRAY) -> bool:
@@ -201,7 +206,7 @@ class StartZone:
     @staticmethod
     def __get_best_threshold(gray) -> Tuple[float_, NDARRAY_]:
         # iterating over threshold levels to find one with max (but not as big as total roi) contour area
-        thresh_out_fs = WriteStream("thresh_levels.avi")
+        debug_thresh_out_fs = WriteStream("thresh_levels.avi")
         level_results: List[Dict] = []
         for thresh in range(20, 230, 1):
             _, img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
@@ -219,7 +224,7 @@ class StartZone:
             result = {"thresh": thresh, "area": area, "contour": contour}
             level_results.append(result)
             logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {len(result['contour'])=}  ")
-            thresh_out_fs.write_bw(img, f"frame {FrameProcessor.frame_cnt}: {thresh=} {area=}")
+            debug_thresh_out_fs.write_bw(img, f"frame {FrameProcessor.frame_cnt}: {thresh=} {area=}")
 
         if len(level_results) == 0:  # no appropriate thresh found
             return None, None
@@ -232,10 +237,16 @@ class StartZone:
         logging.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[0]}")
         return best_result["thresh"], best_result["contour"]
 
+    def update_thresh(self, frame:NDARRAY):
+        pass
+
     def zone_is_found(self) -> bool:
         return False if self.zone_roi is None else True
 
     def ball_is_clicked(self) -> bool:
+        if self.need_reset:
+            self.__zone_reset()
+            self.need_reset = False
         return False if self.click_xy is None else True
 
     @staticmethod
@@ -245,7 +256,8 @@ class StartZone:
             zone_self.__zone_reset()
             zone_self.click_xy = (x, y)
         if event == cv.EVENT_RBUTTONDOWN:
-            zone_self.__zone_reset()
+            zone_self.need_reset = True
+            # zone_self.__zone_reset()
 
     def draw(self, frame:NDARRAY):
         cv.rectangle(frame,
