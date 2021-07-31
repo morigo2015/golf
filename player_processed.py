@@ -11,8 +11,7 @@ import logging
 import datetime
 import cv2 as cv
 
-from util import FrameStream, WriteStream
-from start_zone import StartZone
+from my_util import FrameStream, WriteStream
 from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
 # INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'

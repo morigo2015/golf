@@ -1,5 +1,5 @@
 import re
-from typing import List, Tuple, Union, Any
+from typing import List, Tuple, Union, Any, TypeVar, Dict, Deque
 from collections import deque
 import logging
 import datetime
@@ -7,16 +7,16 @@ import datetime
 import cv2 as cv
 import numpy as np
 
-from util import Util, FrameStream, WriteStream
+from my_util import *  # Util, FrameStream, WriteStream
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
-
 
 class FrameProcessor:
     SWING_CLIP_PREFIX: str = "video/swings/"
     NEED_TRANSPOSE: bool = False
     NEED_FLIP: bool = False
     INPUT_SCALE: float = 0.7
+    frame_cnt: int = -1
 
     def __init__(self, filename=None, win_name=None) -> None:
         self.filename: str = filename
@@ -25,6 +25,7 @@ class FrameProcessor:
         self.start_zone: StartZone = StartZone(win_name, need_load=False)
 
     def process_frame(self, frame: np.ndarray, frame_cnt: int, zone_draw_mode: bool = False) -> np.ndarray:
+        FrameProcessor.frame_cnt = frame_cnt  # class variable to allow access by class name
         if FrameProcessor.INPUT_SCALE != 1.0:
             cv.resize(frame, None, fx=FrameProcessor.INPUT_SCALE, fy=FrameProcessor.INPUT_SCALE)  # !!!
         if FrameProcessor.NEED_TRANSPOSE:
@@ -67,9 +68,8 @@ class FrameProcessor:
 #         logging.debug(f" StartBall is set: {x=} {y=} {len(self.contour)=} {self.area=}")
 
 class ROI:
-    x, y, w, h = [None] * 4
 
-    def __init__(self, frame_shape, point: Tuple[int, int] = None, roi_size: int = None, contour: np.ndarray = None):
+    def __init__(self, frame_shape: Tuple[int, int, int], point: POINT_ = None, roi_size: int = None, contour: np.ndarray = None):
         if point is not None and roi_size is not None:
             self.w, self.h = [roi_size] * 2
             self.x, self.y = point[0] - int(self.w / 2), point[1] - int(self.h / 2)
@@ -106,36 +106,38 @@ class ROI:
         return f"roi({self.x=},{self.y=},{self.w=},{self.h=})"
 
 
+ROI_ = TypeVar('ROI_', ROI, type(None))
+
+
 class StartZone:
     BLUR_LEVEL: int = 3
     MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
     CLICK_ZONE_SIZE: int = 3 * MAX_BALL_SIZE
     ZONE_BALL_RATIO: int = 5  # size of start area in actually found balls (one side)
-    click_xy: Tuple[int, int] = None  # initial click for start zone
-    click_roi: ROI = None
-    click_roi_img: np.ndarray = None
-    # corner_lst: List[Tuple[int, int]] = None
-    # zone_contour: List[Any] = None
-    ball_roi: ROI = None
-    ball_contour: np.ndarray = None  # ball which is used to calibrate start zone
-    ball_area: float = None
-    thresh_val: float = None  # threshold is set to best fit for start zone at the moment of click_xy
-    zone_roi: ROI = None
-    zone_state: str = None
 
     def __init__(self, win_name: str, need_load: bool = False) -> None:
-        self.win_name: str = win_name
+        self.click_xy: POINT_ = None  # initial click for start zone
+        self.click_roi: ROI_ = None
+        self.click_roi_img: NDARRAY_ = None
+        # corner_lst: List[Tuple[int, int]] = None
+        # zone_contour: List[Any] = None
+        self.ball_roi: ROI_ = None
+        self.ball_contour: NDARRAY_ = None  # ball which is used to calibrate start zone
+        self.ball_area: float_ = None
+        self.thresh_val: float_ = None  # threshold is set to best fit for start zone at the moment of click_xy
+        self.zone_roi: ROI_ = None
+        self.zone_state: str_ = None
+        self.win_name: str_ = win_name
         if need_load:
             self.load()
-        cv.setMouseCallback(win_name, self.mouse_callback)
+        cv.setMouseCallback(win_name, self.__mouse_callback, param=self)
 
-    @staticmethod
-    def zone_reset() -> None:
-        # is called from mouse callback, so @staticmethod
-        StartZone.click_xy, StartZone.ball_contour, StartZone.click_roi, StartZone.click_roi_img = [None] * 4
-        StartZone.thresh_val, StartZone.zone_roi, StartZone.ball_roi, StartZone.ball_area, StartZone.zone_state = [None] * 5
+    def __zone_reset(self) -> None:
+        self.click_xy, self.ball_contour, self.click_roi, self.click_roi_img = [None] * 4
+        self.thresh_val, self.zone_roi, self.ball_roi, self.ball_area, self.zone_state = [None] * 5
+        logging.debug("start zone reset")
 
-    def preprocess_image(self, roi_img: np.ndarray, roi_name: str) -> np.ndarray:
+    def __preprocess_image(self, roi_img: NDARRAY, roi_name: str) -> NDARRAY:
         # prepare roi image: bgr->gray->blur->open->close
         gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
         gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
@@ -145,7 +147,7 @@ class StartZone:
         Util.show_img(gray, f"{roi_name}: preprocessed(gray)", 1)
         return gray
 
-    def find_start_zone(self, frame: np.ndarray) -> bool:
+    def find_start_zone(self, frame: NDARRAY) -> bool:
         # try to set up Start Zone (ball, border):
         # click_xy   -->   click_roi (click_xy.center; size = n * MAX_BALL_SIZE   -->
         #            -->   preprocess(gray,blur,dilute)   -->
@@ -157,9 +159,9 @@ class StartZone:
 
         self.click_roi = ROI(frame.shape, self.click_xy, self.CLICK_ZONE_SIZE)
         self.click_roi_img = self.click_roi.extract_img(frame)
-        click_roi_gray = self.preprocess_image(self.click_roi_img, "Start zone")
+        click_roi_gray = self.__preprocess_image(self.click_roi_img, "Start zone")
 
-        self.thresh_val, self.ball_contour = self.get_best_threshold(click_roi_gray)
+        self.thresh_val, self.ball_contour = self.__get_best_threshold(click_roi_gray)
         if not self.thresh_val:  # can't found ball contour
             logging.debug(f"get_zone: failed to find threshold based on click_xy")
             return False
@@ -171,43 +173,10 @@ class StartZone:
         logging.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=} {cv.contourArea(self.ball_contour)=}")
         return True
 
-    @staticmethod
-    def get_best_threshold(gray) -> Tuple[Union[float, None], Union[np.ndarray, None]]:
-        # iterating over threshold levels to find one with max (but not as big as total roi) contour area
-        level_results = []
-        for thresh in range(50, 200, 5):
-            _, img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
-            # Util.show_img(img, f"thresh level = {thresh}", 1)
-
-            contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-            logging.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
-            if len(contours) != 1:
-                continue
-            contour = contours[0]
-            area = cv.contourArea(contour)
-            x, y, w, h = cv.boundingRect(contour)
-            if max(w, h) / max(gray.shape) > 0.9:  # contour is as big as total image - so is useless
-                logging.debug(f"get_best_thresh: too big {thresh=} {w=} {h=} ")
-                continue
-            result = {"thresh": thresh, "area": area, "contour": contour}
-            level_results.append(result)
-            logging.debug(f"get_best_thresh: level result saved {result['thresh']=} {result['area']=} {len(result['contour'])=}  ")
-
-        if len(level_results) == 0:  # no appropriate thresh found
-            return None, None
-        if len(level_results) == 1:  # return just the only found thresh
-            best_result = level_results[0]
-        else:  # len(level_results) > 1:  return second best by area if possible
-            level_results = sorted(level_results, key=lambda res: res["area"], reverse=True)
-            best_result = level_results[1]
-
-        logging.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[0]}")
-        return best_result["thresh"], best_result["contour"]
-
-    def get_current_state(self, frame) -> str:
+    def get_current_state(self, frame: NDARRAY) -> str:
         # analyze current state of StartArea: 'E' - empty, 'B' - ball, 'M' - mess
         roi_img = self.zone_roi.extract_img(frame)
-        gray = self.preprocess_image(roi_img, "Stream")
+        gray = self.__preprocess_image(roi_img, "Stream")
         _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
         Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
@@ -229,21 +198,56 @@ class StartZone:
         self.zone_state = 'M'
         return self.zone_state
 
-    def zone_is_found(self):
+    @staticmethod
+    def __get_best_threshold(gray) -> Tuple[float_, NDARRAY_]:
+        # iterating over threshold levels to find one with max (but not as big as total roi) contour area
+        thresh_out_fs = WriteStream("thresh_levels.avi")
+        level_results: List[Dict] = []
+        for thresh in range(20, 230, 1):
+            _, img = cv.threshold(gray, thresh, 255, cv.THRESH_BINARY)
+            # Util.show_img(img, f"thresh level = {thresh}", 1)
+
+            contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+            # logging.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
+            if len(contours) != 1:
+                continue
+            contour = contours[0]
+            area = cv.contourArea(contour)
+            x, y, w, h = cv.boundingRect(contour)
+            if max(w, h) / max(gray.shape) > 0.9:  # contour is as big as total image - so is useless
+                continue
+            result = {"thresh": thresh, "area": area, "contour": contour}
+            level_results.append(result)
+            logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {len(result['contour'])=}  ")
+            thresh_out_fs.write_bw(img, f"frame {FrameProcessor.frame_cnt}: {thresh=} {area=}")
+
+        if len(level_results) == 0:  # no appropriate thresh found
+            return None, None
+        if len(level_results) == 1:  # return just the only found thresh
+            best_result = level_results[0]
+        else:  # len(level_results) > 1:  return second best by area if possible
+            level_results = sorted(level_results, key=lambda res: res["area"], reverse=True)
+            best_result = level_results[1]
+
+        logging.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[0]}")
+        return best_result["thresh"], best_result["contour"]
+
+    def zone_is_found(self) -> bool:
         return False if self.zone_roi is None else True
 
-    def ball_is_clicked(self):
+    def ball_is_clicked(self) -> bool:
         return False if self.click_xy is None else True
 
     @staticmethod
-    def mouse_callback(event, x, y, flags, param):
+    def __mouse_callback(event, x, y, flags, param):
+        zone_self = param
         if event == cv.EVENT_LBUTTONDOWN:
-            StartZone.zone_reset()
-            StartZone.click_xy = (x, y)
+            zone_self.__zone_reset()
+            zone_self.click_xy = (x, y)
         if event == cv.EVENT_RBUTTONDOWN:
-            StartZone.zone_reset()
+            zone_self.__zone_reset()
 
-    def draw(self, frame):
+    def draw(self, frame:NDARRAY):
         cv.rectangle(frame,
                      (self.zone_roi.x, self.zone_roi.y), (self.zone_roi.x + self.zone_roi.w, self.zone_roi.y + self.zone_roi.h), (255, 0, 0), 1)
         cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
@@ -257,11 +261,11 @@ class StartZone:
     def save(self):
         pass
 
-    def xy_zone_2_frame(self, zone_xy):
-        return zone_xy[0] + self.click_roi.x, zone_xy[1] + self.click_roi.y
-
-    def xy_frame_2_zone(self, frame_xy):
-        return frame_xy[0] - self.click_roi.x, frame_xy[1] - self.click_roi.y
+    # def xy_zone_2_frame(self, zone_xy:POINT) -> POINT:
+    #     return zone_xy[0] + self.click_roi.x, zone_xy[1] + self.click_roi.y
+    #
+    # def xy_frame_2_zone(self, frame_xy:POINT) -> POINT:
+    #     return frame_xy[0] - self.click_roi.x, frame_xy[1] - self.click_roi.y
 
     # def get_closest_brightest(self, gray):
     #     # return coordinate of closest to click_xy point which is == to max(gray)
@@ -275,13 +279,13 @@ class StartZone:
 
 
 class History:
-    FRAME_BUFF_SZ = 300
-    MAX_CLIP_SZ = 150
-    frames_buffer = deque(maxlen=FRAME_BUFF_SZ)
+    FRAME_BUFF_SZ:int = 300
+    MAX_CLIP_SZ:int = 150
+    frames_buffer:Deque = deque(maxlen=FRAME_BUFF_SZ)
     states_string: str = ""
 
     @classmethod
-    def save_state(cls, state: str, frame):
+    def save_state(cls, state: str, frame:NDARRAY):
         cls.states_string += state
         cls.frames_buffer.append(frame.copy())
         # logging.debug(f"{len(cls.frames_buffer)=}")

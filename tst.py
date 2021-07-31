@@ -1,18 +1,25 @@
+from typing import TypeVar, Type
 
 
-class AA:
-    bb = "just str"
-    cc = "cc"
-    def __init__(self,par):
-        self.par = par
-        print(f"{par=} {AA.bb=} {self.bb=}")
+class A:
+    f1 = 0
+
+    def __init__(self, param):
+        print(f"{A.f1=}, {param=}")
+        self.f1 = param
+        print(f"{A.f1=}, {self.f1=}")
+    T_ = TypeVar('T_', A, type(None))
 
 
-class BB:
-    c = 1
 
+a1 : A.T_ = 5 # A(3)
+a2: A.T_ = None
 
-a1 = AA(10)
-a2 = AA(20)
-AA.bb = "new str"
-a3 = AA(30)
+print(f"outer {A.f1=}")
+aa: A = A(5)
+print(f"outer {A.f1=}")
+
+# T = TypeVar('T')
+# STRN_ = TypeVar('STRN_', str, bytes, None)
+# s : STRN_ = "5"
+# ss : STRN_ = None

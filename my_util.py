@@ -1,8 +1,18 @@
+import logging
 import math
 import glob
 import time
 import numpy as np
 import cv2 as cv
+from typing import List, Tuple, Union, Any, TypeVar, Dict, Deque
+
+# type hints abbreviations since current version of Python doesn't support |None in hints
+POINT = Tuple[int, int]
+POINT_ = TypeVar('POINT_', POINT, type(None))
+NDARRAY = np.ndarray
+NDARRAY_ = TypeVar('NDARRAY_', NDARRAY, type(None))
+float_ = TypeVar('float_', float, type(None))
+str_ = TypeVar('str_', str, type(None))
 
 
 class Util:
@@ -159,9 +169,16 @@ class WriteStream:
             self.out = cv.VideoWriter(self.file_name, self.fourcc, self.fps, out_shape)
         self.out.write(out_frame)
 
+    def write_bw(self, bw_img, text=None):
+        # write black_white (one channel) image with colour text added
+        colour_img = cv.cvtColor(bw_img, cv.COLOR_GRAY2BGR)
+        colour_img = cv.resize(colour_img, (500, 500))
+        cv.putText(colour_img, text, (30, 30), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        self.write(colour_img)
+
     def __del__(self):
         self.out.release()
-        pass
+        logging.debug(f"file {self.file_name} released")
 
 # -------------------------------------------------------------------------------------------------------------
 
