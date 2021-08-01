@@ -17,7 +17,7 @@ out_file_name = 'video/out2.avi'
 frame_mode_initial = False
 # frame_mode_initial = True
 
-write_mode = True if inp_source_name[0:4] == 'rtsp' else False
+WRITE_MODE = True if inp_source_name[0:4] == 'rtsp' else False
 # write_mode = False
 
 delay_initial = 1
@@ -55,7 +55,7 @@ def main():
                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         cv.imshow(f'out_frame', out_frame)
 
-        if write_mode:
+        if WRITE_MODE:
             if not out:
                 out_shape = (out_frame.shape[1], out_frame.shape[0])
                 out = cv.VideoWriter(out_file_name, fourcc, 20.0, out_shape)
@@ -87,7 +87,7 @@ def main():
         f"Finish. Duration={fs.total_time():.0f} sec, {fs.frame_cnt} frames,  fps={fs.fps():.1f} f/s")
 
     del fs
-    if write_mode:
+    if WRITE_MODE:
         out.release()
     cv.destroyAllWindows()
 
