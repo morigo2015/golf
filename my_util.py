@@ -107,8 +107,6 @@ class Util:
         ch = cv.waitKey(delay)
         if ch == ord('s'):
             cv.imwrite(f"{Util.out_fname}{name}.png", img)
-        elif ch == ord('q'):
-            exit(0)
 
 
 class FrameStream:
@@ -177,7 +175,8 @@ class WriteStream:
         self.write(colour_img)
 
     def __del__(self):
-        self.out.release()
+        pass
+        # self.out.release() # todo вернуть обратно
         # logging.debug(f"file {self.file_name} released")
 
 # -------------------------------------------------------------------------------------------------------------

@@ -16,17 +16,17 @@ import cv2 as cv
 from my_util import FrameStream, WriteStream
 from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
-INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-# INPUT_SOURCE = 'video/0.avi'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) phone-range-2.mp4
+# INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
+INPUT_SOURCE = 'video/0.avi'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) phone-range-2.mp4
 # INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 OUT_FILE_NAME = 'video/out2.avi'
-WRITE_MODE = True  # if INPUT_SOURCE[0:4] == 'rtsp' else False
+WRITE_MODE = False  # if INPUT_SOURCE[0:4] == 'rtsp' else False
 WRITE_FPS = 25
 
 FRAME_MODE_INITIAL = False
 ZONE_DRAW_INITIAL = True
-DELAY = 25  # delay in normal 'g'-mode
+DELAY = 1  # delay in normal 'g'-mode
 WIN_NAME = "Watcher"
 
 
@@ -68,14 +68,13 @@ def main():
             continue
         elif ch == ord('z'):
             zone_draw_mode = not zone_draw_mode
-
+        continue
     print(f"Finish. Duration={input_fs.total_time():.0f} sec, {input_fs.frame_cnt} frames,  fps={input_fs.fps():.1f} f/s")
 
     del frame_proc
     del input_fs
     if WRITE_MODE:
         del out_fs
-    # os.rename(OUT_FILE_NAME,OUT_FILE_NAME[:-4]+'_fin.avi')
     cv.destroyAllWindows()
 
 

@@ -15,7 +15,7 @@ logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 class FrameProcessor:
     SWING_CLIP_PREFIX: str = "video/swings/"
-    NEED_TRANSPOSE: bool = False
+    NEED_TRANSPOSE: bool = True  # False
     NEED_FLIP: bool = False
     INPUT_SCALE: float = 0.7
     frame_cnt: int = -1
@@ -30,7 +30,7 @@ class FrameProcessor:
     def process_frame(self, frame: np.ndarray, frame_cnt: int, zone_draw_mode: bool = False) -> np.ndarray:
         FrameProcessor.frame_cnt = frame_cnt  # class variable to allow access by class name
         if FrameProcessor.INPUT_SCALE != 1.0:
-            cv.resize(frame, None, fx=FrameProcessor.INPUT_SCALE, fy=FrameProcessor.INPUT_SCALE)  # !!!
+            frame = cv.resize(frame, None, fx=FrameProcessor.INPUT_SCALE, fy=FrameProcessor.INPUT_SCALE)  # !!!
         if FrameProcessor.NEED_TRANSPOSE:
             frame = cv.transpose(frame)
         if FrameProcessor.NEED_FLIP:
@@ -44,6 +44,7 @@ class FrameProcessor:
                 return frame
 
         start_zone_state = self.start_zone.get_current_state(frame)
+
         History.save_state(start_zone_state, frame)
         # if start_zone_state == 'B':
         #     self.start_zone.update_thresh(frame)
@@ -51,7 +52,7 @@ class FrameProcessor:
         r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
         if r:
             History.write_swing(r)
-            playsound('sound/Golf_Hole.mp3')
+            # playsound('sound/Golf_Hole.mp3')
             History.reset()
             FrameProcessor.swing_cnt += 1
 
@@ -118,7 +119,7 @@ ROI_ = TypeVar('ROI_', ROI, type(None))
 
 
 class StartZone:
-    BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE)//2*2 + 1)  # must be odd
+    BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE) // 2 * 2 + 1)  # must be odd
     MAX_BALL_SIZE: int = int(35 * FrameProcessor.INPUT_SCALE)
     CLICK_ZONE_SIZE: int = 3 * MAX_BALL_SIZE
     ZONE_BALL_RATIO: int = 4  # size of start area in actually found balls (one side)
@@ -137,6 +138,7 @@ class StartZone:
         self.zone_state: str_ = None
         self.win_name: str_ = win_name
         self.need_reset = False  # reset is delayed till next frame to save consistency between ball_is_clicked()/zone_is_found()/get_current_state()
+        self.new_click_xy = None  # store new click_xy till actual reset (in ball_is_clicked())
         if need_load:
             self.load()
         cv.setMouseCallback(win_name, self.__mouse_callback, param=self)
@@ -183,9 +185,13 @@ class StartZone:
         roi_img = self.zone_roi.extract_img(frame)
         gray = self.__preprocess_image(roi_img, "Stream")
         _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
-        Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+        # Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
         contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        if self.ball_area is None:
+            self.zone_state = 'M' # todo remove
+            return self.zone_state
+
         contours = [cont for cont in contours if self.ball_area * 0.5 < cv.contourArea(cont)]  # remove too small conts
         all_cnt = len(contours)
         contours = [cont for cont in contours if cv.contourArea(cont) < self.ball_area * 3]  # remove too big conts
@@ -225,7 +231,7 @@ class StartZone:
                 continue
             result = {"thresh": thresh, "area": area, "contour": contour}
             level_results.append(result)
-            logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {len(result['contour'])=}  ")
+            # logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {len(result['contour'])=}  ")
             if save_debug_thresh_images:
                 debug_thresh_out_fs.write_bw(img, f"frame {FrameProcessor.frame_cnt}: {thresh=} {area=}")
 
@@ -259,20 +265,24 @@ class StartZone:
         return False if self.zone_roi is None else True
 
     def ball_is_clicked(self) -> bool:
-        if self.need_reset:
+        # it's initial call when FrameProcessor operate with Start.Zone. Here we can do reset safely, if was set
+        if not self.need_reset:
+            return False if self.click_xy is None else True
+        else:  # need reset
             self.__zone_reset()
-            self.need_reset = False
-        return False if self.click_xy is None else True
+            if self.new_click_xy is not None:
+                self.click_xy = self.new_click_xy
+                self.new_click_xy = None
+                self.need_reset = False
 
     @staticmethod
     def __mouse_callback(event, x, y, flags, param):
         zone_self = param
         if event == cv.EVENT_LBUTTONDOWN:
-            zone_self.__zone_reset()
-            zone_self.click_xy = (x, y)
+            zone_self.need_reset = True
+            zone_self.new_click_xy = (x, y)
         if event == cv.EVENT_RBUTTONDOWN:
             zone_self.need_reset = True
-            # zone_self.__zone_reset()
 
     def draw(self, frame: NDARRAY):
         if self.zone_roi:
@@ -315,6 +325,7 @@ class History:
 
     @classmethod
     def save_state(cls, state: str, frame: NDARRAY):
+        pass
         cls.states_string += state
         cls.frames_buffer.append(frame.copy())
         # logging.debug(f"{len(cls.frames_buffer)=}")
