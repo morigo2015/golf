@@ -9,13 +9,15 @@
 
 import logging
 import datetime
+import os
+
 import cv2 as cv
 
 from my_util import FrameStream, WriteStream
 from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
-# INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-INPUT_SOURCE = 'video/phone-range-2.mp4'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) phone-range-2.mp4
+INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
+# INPUT_SOURCE = 'video/0.avi'  # 0.avi b2_cut phone-profil-evening-1.mp4 fac-2 nb-profil-1 (daylight) phone-range-2.mp4
 # INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 OUT_FILE_NAME = 'video/out2.avi'
@@ -24,15 +26,15 @@ WRITE_FPS = 25
 
 FRAME_MODE_INITIAL = False
 ZONE_DRAW_INITIAL = True
-DELAY = 5  # delay in normal 'g'-mode
+DELAY = 25  # delay in normal 'g'-mode
+WIN_NAME = "Watcher"
 
 
 def main():
     frame_mode = FRAME_MODE_INITIAL
     zone_draw_mode = ZONE_DRAW_INITIAL  # True - draw active zone (corners_lst) on all images
-
-    cv.namedWindow('out_frame')
-    frame_proc = FrameProcessor(INPUT_SOURCE, win_name='out_frame')
+    cv.namedWindow(WIN_NAME)
+    frame_proc = FrameProcessor(win_name=WIN_NAME)
 
     input_fs = FrameStream(INPUT_SOURCE)
     out_fs = WriteStream(OUT_FILE_NAME, fps=WRITE_FPS)
@@ -50,7 +52,7 @@ def main():
         if WRITE_MODE:
             out_fs.write(out_frame)
 
-        cv.imshow(f'out_frame', out_frame)
+        cv.imshow(WIN_NAME, out_frame)
         ch = cv.waitKey(0 if frame_mode else DELAY)
         if ch == ord('q'):
             break
@@ -73,6 +75,7 @@ def main():
     del input_fs
     if WRITE_MODE:
         del out_fs
+    # os.rename(OUT_FILE_NAME,OUT_FILE_NAME[:-4]+'_fin.avi')
     cv.destroyAllWindows()
 
 

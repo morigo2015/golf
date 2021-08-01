@@ -8,7 +8,11 @@ if __name__ == "__main__":
     def on_created(event):
         print(f"hey, {event.src_path} has been created!")
 
+    def on_closed(event):
+        print(f"hey, {event.src_path} has been closed!")
+
     my_event_handler.on_created = on_created
+    my_event_handler.on_closed = on_closed
 
     my_observer = Observer()
     my_observer.schedule(my_event_handler, "video/swings/", recursive=False)

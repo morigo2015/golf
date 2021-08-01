@@ -21,8 +21,8 @@ class FrameProcessor:
     frame_cnt: int = -1
     swing_cnt = 0
 
-    def __init__(self, filename=None, win_name=None) -> None:
-        self.filename: str = filename
+    def __init__(self, win_name=None) -> None:
+        # self.filename: str = filename
         self.processor_name: str = __file__
         self.win_name: str = win_name
         self.start_zone: StartZone = StartZone(win_name, need_load=False)
@@ -119,9 +119,9 @@ ROI_ = TypeVar('ROI_', ROI, type(None))
 
 class StartZone:
     BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE)//2*2 + 1)  # must be odd
-    MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
+    MAX_BALL_SIZE: int = int(35 * FrameProcessor.INPUT_SCALE)
     CLICK_ZONE_SIZE: int = 3 * MAX_BALL_SIZE
-    ZONE_BALL_RATIO: int = 5  # size of start area in actually found balls (one side)
+    ZONE_BALL_RATIO: int = 4  # size of start area in actually found balls (one side)
 
     def __init__(self, win_name: str, need_load: bool = False) -> None:
         self.click_xy: POINT_ = None  # initial click for start zone
@@ -237,9 +237,15 @@ class StartZone:
             level_results = sorted(level_results, key=lambda res: res["area"], reverse=True)
             best_result = level_results[1]
 
-        logging.debug(f"{best_result['thresh']=} {best_result['area']=} \
-                otsu = {cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[0]}")
-        return best_result["thresh"], best_result["contour"]
+        otsu_thresh, otsu_img = cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+        otsu_contours, _ = cv.findContours(otsu_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        otsu_contours = sorted(otsu_contours, key=lambda cont: cv.contourArea(cont), reverse=True)
+        otsu_cont = otsu_contours[0]
+        logging.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
+        return otsu_thresh, otsu_cont
+        # logging.debug(f"{best_result['thresh']=} {best_result['area']=} \
+        #         otsu = {cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[0]}")
+        # return best_result["thresh"], best_result["contour"]
 
     def update_thresh(self, frame: NDARRAY) -> None:
         thresh_val, _ = self.__get_best_threshold(frame, save_debug_thresh_images=False)
@@ -269,9 +275,11 @@ class StartZone:
             # zone_self.__zone_reset()
 
     def draw(self, frame: NDARRAY):
-        cv.rectangle(frame,
-                     (self.zone_roi.x, self.zone_roi.y), (self.zone_roi.x + self.zone_roi.w, self.zone_roi.y + self.zone_roi.h), (255, 0, 0), 1)
-        cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
+        if self.zone_roi:
+            cv.rectangle(frame,
+                         (self.zone_roi.x, self.zone_roi.y), (self.zone_roi.x + self.zone_roi.w, self.zone_roi.y + self.zone_roi.h), (255, 0, 0), 1)
+        if self.click_xy:
+            cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
         # # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
         cv.putText(frame, f"{self.zone_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
         return frame
