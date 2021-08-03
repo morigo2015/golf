@@ -118,7 +118,7 @@ class Player:
         cv.putText(frame, f"{self.delay}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
 class WatchDog:
-    FOLDER_TO_WATCH = "video/swings/"
+    FOLDER_TO_WATCH = "swings/"
     FILES_TO_WATCH = ["*.avi"]
     new_file_arrived: bool = False
     __new_file_name = None

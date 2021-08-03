@@ -1,5 +1,5 @@
 import re
-from typing import List, Tuple, Union, Any, TypeVar, Dict, Deque
+from typing import List, Tuple, TypeVar, Dict, Deque
 from collections import deque
 import logging
 import datetime
@@ -8,9 +8,16 @@ import cv2 as cv
 import numpy as np
 from playsound import playsound
 
-from my_util import *  # Util, FrameStream, WriteStream
-
+from my_util import Util, FrameStream, WriteStream
+from timer import TimeMeasure
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
+
+# type hints abbreviations since current version of Python doesn't support |None in hints
+Point = Tuple[int, int]
+Point_ = TypeVar('Point_', Point, type(None))
+Ndarray_ = TypeVar('Ndarray_', np.ndarray, type(None))
+float_ = TypeVar('float_', float, type(None))
+str_ = TypeVar('str_', str, type(None))
 
 
 class FrameProcessor:
@@ -28,6 +35,7 @@ class FrameProcessor:
         self.start_zone: StartZone = StartZone(win_name, need_load=False)
 
     def process_frame(self, frame: np.ndarray, frame_cnt: int, zone_draw_mode: bool = False) -> np.ndarray:
+        # TimeMeasure.set("prcocess_frame start")
         FrameProcessor.frame_cnt = frame_cnt  # class variable to allow access by class name
         if FrameProcessor.INPUT_SCALE != 1.0:
             frame = cv.resize(frame, None, fx=FrameProcessor.INPUT_SCALE, fy=FrameProcessor.INPUT_SCALE)  # !!!
@@ -35,6 +43,7 @@ class FrameProcessor:
             frame = cv.transpose(frame)
         if FrameProcessor.NEED_FLIP:
             frame = cv.flip(frame, 1)
+        # TimeMeasure.set("prcocess_frame: frame prepared")
 
         if not self.start_zone.ball_is_clicked():
             return frame
@@ -42,17 +51,23 @@ class FrameProcessor:
             if not self.start_zone.find_start_zone(frame):
                 print(" Error!!! ball was clicked however Start Zone cannot be found!")
                 return frame
+        # TimeMeasure.set("prcocess_frame: start zone finded")
 
         start_zone_state = self.start_zone.get_current_state(frame)
+        # TimeMeasure.set("prcocess_frame: current state found ")
 
         History.save_state(start_zone_state, frame)
+        # TimeMeasure.set("prcocess_frame: histry-save-state ")
+
         # if start_zone_state == 'B':
         #     self.start_zone.update_thresh(frame)
 
         r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
+
         if r:
             History.write_swing(r)
-            playsound('sound/GolfSwing2.mp3')
+            # playsound('sound/GolfSwing2.mp3')
+
             History.reset()
             FrameProcessor.swing_cnt += 1
 
@@ -63,6 +78,8 @@ class FrameProcessor:
     def __del__(self):
         self.start_zone.save()
         print(f"Totally swing found: {FrameProcessor.swing_cnt}")
+        print(f"\nTimeMeasure results:\n{TimeMeasure.results()}")
+
 
 
 # class StartBall:
@@ -78,7 +95,7 @@ class FrameProcessor:
 
 class ROI:
 
-    def __init__(self, frame_shape: Tuple[int, int, int], point: POINT_ = None, roi_size: int = None, contour: np.ndarray = None):
+    def __init__(self, frame_shape: Tuple[int, int, int], point: Point_ = None, roi_size: int = None, contour: np.ndarray = None):
         if point is not None and roi_size is not None:
             self.w, self.h = [roi_size] * 2
             self.x, self.y = point[0] - int(self.w / 2), point[1] - int(self.h / 2)
@@ -123,19 +140,19 @@ class StartZone:
     MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
     MIN_BALL_AREA_RATIO: float = 0.2  # min ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_BALL_AREA_RATIO: int = 4  # max ration of (ball candidate area) / (startzone ball area) for detecting as ball candidate
-    MAX_MATCH_RATE : float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
-    MAX_RECT_RATIO : float = 0.9  # max ratio of (bounding_rectangle(contour) / zone_roi_size) to be a candidate to ball in get_best_threshold
+    MAX_MATCH_RATE: float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
+    MAX_RECT_RATIO: float = 0.9  # max ratio of (bounding_rectangle(contour) / zone_roi_size) to be a candidate to ball in get_best_threshold
     ZONE_BALL_RATIO: int = 4  # size of start area in actually found balls (one side)
     CLICK_ZONE_SIZE: int = ZONE_BALL_RATIO * MAX_BALL_SIZE
 
     def __init__(self, win_name: str, need_load: bool = False) -> None:
-        self.click_xy: POINT_ = None  # initial click for start zone
+        self.click_xy: Point_ = None  # initial click for start zone
         self.click_roi: ROI_ = None
-        self.click_roi_img: NDARRAY_ = None
+        self.click_roi_img: Ndarray_ = None
         # corner_lst: List[Tuple[int, int]] = None
         # zone_contour: List[Any] = None
         self.ball_roi: ROI_ = None
-        self.ball_contour: NDARRAY_ = None  # ball which is used to calibrate start zone
+        self.ball_contour: Ndarray_ = None  # ball which is used to calibrate start zone
         self.ball_area: float_ = None
         self.thresh_val: float_ = None  # threshold is set to best fit for start zone at the moment of click_xy
         self.zone_roi: ROI_ = None
@@ -152,7 +169,7 @@ class StartZone:
         self.thresh_val, self.zone_roi, self.ball_roi, self.ball_area, self.zone_state = [None] * 5
         logging.debug("start zone reset")
 
-    def __preprocess_image(self, roi_img: NDARRAY, roi_name: str="preprocess image") -> NDARRAY:
+    def __preprocess_image(self, roi_img: np.ndarray, roi_name: str = "preprocess image") -> np.ndarray:
         # prepare roi image: bgr->gray->blur->open->close
         gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
         gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
@@ -162,7 +179,7 @@ class StartZone:
         # Util.show_img(gray, f"{roi_name}: preprocessed(gray)", 1)
         return gray
 
-    def find_start_zone(self, frame: NDARRAY) -> bool:
+    def find_start_zone(self, frame: np.ndarray) -> bool:
         # try to set up Start Zone (ball, border):
         # click_xy   -->   click_roi (click_xy.center; size = n * MAX_BALL_SIZE   -->
         #            -->   preprocess(gray,blur,dilute)   -->
@@ -186,7 +203,7 @@ class StartZone:
                 area (scaled) = {self.ball_area / (FrameProcessor.INPUT_SCALE ** 2):.0f} {self.thresh_val=}")
         return True
 
-    def get_current_state(self, frame: NDARRAY) -> str:
+    def get_current_state(self, frame: np.ndarray) -> str:
         # analyze current state of StartArea: 'E' - empty, 'B' - ball, 'M' - mess
         roi_img = self.zone_roi.extract_img(frame)
         gray = self.__preprocess_image(roi_img, "Stream")
@@ -210,7 +227,7 @@ class StartZone:
         self.zone_state = 'M'
         return self.zone_state
 
-    def __get_best_threshold(self, frame: NDARRAY, save_debug_thresh_images: bool) -> Tuple[float_, NDARRAY_]:
+    def __get_best_threshold(self, frame: np.ndarray, save_debug_thresh_images: bool) -> Tuple[float_, Ndarray_]:
         # iterating over threshold levels to find one with max (but not as big as total roi) contour area
         self.click_roi = ROI(frame.shape, self.click_xy, self.CLICK_ZONE_SIZE)
         self.click_roi_img = self.click_roi.extract_img(frame)
@@ -258,13 +275,13 @@ class StartZone:
         Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
         return best_result["thresh"], best_result["contour"]
 
-    def update_thresh(self, frame: NDARRAY) -> None:
-        thresh_val, _ = self.__get_best_threshold(frame, save_debug_thresh_images=False)
-        if thresh_val is None:
-            return  # Too bad. We can't found best threshold. Touch nothing. Hope next frames will be better.
-        # we don't touch ball_area, ball_size, ball_contour, zone_roi. threshold only.
-        logging.debug(f"update_thresh: thresh level is changed!! {self.thresh_val} --> {thresh_val}")
-        self.thresh_val = thresh_val
+    # def update_thresh(self, frame: np.ndarray) -> None:
+    #     thresh_val, _ = self.__get_best_threshold(frame, save_debug_thresh_images=False)
+    #     if thresh_val is None:
+    #         return  # Too bad. We can't found best threshold. Touch nothing. Hope next frames will be better.
+    #     # we don't touch ball_area, ball_size, ball_contour, zone_roi. threshold only.
+    #     logging.debug(f"update_thresh: thresh level is changed!! {self.thresh_val} --> {thresh_val}")
+    #     self.thresh_val = thresh_val
 
     def zone_is_found(self) -> bool:
         return False if self.zone_roi is None else True
@@ -289,7 +306,7 @@ class StartZone:
         if event == cv.EVENT_RBUTTONDOWN:
             zone_self.need_reset = True
 
-    def draw(self, frame: NDARRAY):
+    def draw(self, frame: np.ndarray):
         if self.zone_roi:
             cv.rectangle(frame,
                          (self.zone_roi.x, self.zone_roi.y), (self.zone_roi.x + self.zone_roi.w, self.zone_roi.y + self.zone_roi.h), (255, 0, 0), 1)
@@ -329,7 +346,7 @@ class History:
     states_string: str = ""
 
     @classmethod
-    def save_state(cls, state: str, frame: NDARRAY):
+    def save_state(cls, state: str, frame: np.ndarray):
         pass
         cls.states_string += state
         cls.frames_buffer.append(frame.copy())
@@ -337,17 +354,26 @@ class History:
 
     @classmethod
     def write_swing(cls, r):
+        TimeMeasure.set("skip_me")
+
         start_pos, end_pos = r.span()
         frames_to_write = min(end_pos - start_pos, cls.MAX_CLIP_SZ)
         frames_to_skip = len(cls.frames_buffer) - frames_to_write
+        TimeMeasure.set("write-swing - 1 ")
+
         for i in range(frames_to_skip):
             cls.frames_buffer.popleft()
+        TimeMeasure.set("write-swing - 2 ")
+
         out_file_name = f"{FrameProcessor.SWING_CLIP_PREFIX}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"
+        TimeMeasure.set("write-swing - 3 ")
+
         out_fs = WriteStream(out_file_name, fps=5)
         for i in range(frames_to_write):
             out_frame = cls.frames_buffer.popleft()
             out_fs.write(out_frame)
         del out_fs
+
         logging.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
         print(f"swing clip written: {out_file_name=}")
         return out_file_name

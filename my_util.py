@@ -6,13 +6,6 @@ import numpy as np
 import cv2 as cv
 from typing import List, Tuple, Union, Any, TypeVar, Dict, Deque
 
-# type hints abbreviations since current version of Python doesn't support |None in hints
-POINT = Tuple[int, int]
-POINT_ = TypeVar('POINT_', POINT, type(None))
-NDARRAY = np.ndarray
-NDARRAY_ = TypeVar('NDARRAY_', NDARRAY, type(None))
-float_ = TypeVar('float_', float, type(None))
-str_ = TypeVar('str_', str, type(None))
 
 
 class Util:
