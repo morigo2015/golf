@@ -9,13 +9,13 @@ from my_util import FrameStream
 # from zone import ZonePoints
 
 # inp_source_name = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-inp_source_name = 'video/0.avi'  # tst.mp4
+inp_source_name = 'thresh_level.avi'  # tst.mp4
 # inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
 out_file_name = 'video/out2.avi'
 
-frame_mode_initial = False
-# frame_mode_initial = True
+# frame_mode_initial = False
+frame_mode_initial = True
 
 WRITE_MODE = True if inp_source_name[0:4] == 'rtsp' else False
 # write_mode = False

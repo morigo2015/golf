@@ -108,6 +108,14 @@ class Util:
         if ch == ord('s'):
             cv.imwrite(f"{Util.out_fname}{name}.png", img)
 
+    @staticmethod
+    def write_bw(file_name, bw_img, text=None):
+        # write black_white (one channel) image with colour text added
+        colour_img = cv.cvtColor(bw_img, cv.COLOR_GRAY2BGR)
+        colour_img = cv.resize(colour_img, (500, 500))
+        cv.putText(colour_img, text, (30, 30), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        cv.imwrite(file_name, colour_img)
+
 
 class FrameStream:
     def __init__(self, source_path):
@@ -166,13 +174,6 @@ class WriteStream:
             out_shape = (out_frame.shape[1], out_frame.shape[0])
             self.out = cv.VideoWriter(self.file_name, self.fourcc, self.fps, out_shape)
         self.out.write(out_frame)
-
-    def write_bw(self, bw_img, text=None):
-        # write black_white (one channel) image with colour text added
-        colour_img = cv.cvtColor(bw_img, cv.COLOR_GRAY2BGR)
-        colour_img = cv.resize(colour_img, (500, 500))
-        cv.putText(colour_img, text, (30, 30), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        self.write(colour_img)
 
     def __del__(self):
         pass

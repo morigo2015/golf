@@ -14,7 +14,7 @@ logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 
 class FrameProcessor:
-    SWING_CLIP_PREFIX: str = "video/swings/"
+    SWING_CLIP_PREFIX: str = "swings/"
     NEED_TRANSPOSE: bool = True  # False
     NEED_FLIP: bool = False
     INPUT_SCALE: float = 0.7
@@ -52,7 +52,7 @@ class FrameProcessor:
         r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
         if r:
             History.write_swing(r)
-            # playsound('sound/Golf_Hole.mp3')
+            playsound('sound/GolfSwing2.mp3')
             History.reset()
             FrameProcessor.swing_cnt += 1
 
@@ -102,7 +102,7 @@ class ROI:
     def extract_img(self, frame):
         return frame[self.y: self.y + self.h, self.x: self.x + self.w]
 
-    def is_touched_border(self, contour):
+    def is_touched_to_contour(self, contour):
         # True if contour touch any border of roi
         x, y, w, h = cv.boundingRect(contour)
         return True if x == self.x or y == self.y or x + w == self.x + self.w or y + h == self.y + self.h else False
@@ -120,9 +120,13 @@ ROI_ = TypeVar('ROI_', ROI, type(None))
 
 class StartZone:
     BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE) // 2 * 2 + 1)  # must be odd
-    MAX_BALL_SIZE: int = int(35 * FrameProcessor.INPUT_SCALE)
-    CLICK_ZONE_SIZE: int = 3 * MAX_BALL_SIZE
+    MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
+    MIN_BALL_AREA_RATIO: float = 0.2  # min ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
+    MAX_BALL_AREA_RATIO: int = 4  # max ration of (ball candidate area) / (startzone ball area) for detecting as ball candidate
+    MAX_MATCH_RATE : float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
+    MAX_RECT_RATIO : float = 0.9  # max ratio of (bounding_rectangle(contour) / zone_roi_size) to be a candidate to ball in get_best_threshold
     ZONE_BALL_RATIO: int = 4  # size of start area in actually found balls (one side)
+    CLICK_ZONE_SIZE: int = ZONE_BALL_RATIO * MAX_BALL_SIZE
 
     def __init__(self, win_name: str, need_load: bool = False) -> None:
         self.click_xy: POINT_ = None  # initial click for start zone
@@ -148,7 +152,7 @@ class StartZone:
         self.thresh_val, self.zone_roi, self.ball_roi, self.ball_area, self.zone_state = [None] * 5
         logging.debug("start zone reset")
 
-    def __preprocess_image(self, roi_img: NDARRAY, roi_name: str) -> NDARRAY:
+    def __preprocess_image(self, roi_img: NDARRAY, roi_name: str="preprocess image") -> NDARRAY:
         # prepare roi image: bgr->gray->blur->open->close
         gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
         gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
@@ -178,6 +182,8 @@ class StartZone:
         ball_size = max(self.ball_roi.w, self.ball_roi.h)
         self.zone_roi = ROI(frame.shape, self.click_roi.center_xy(), ball_size * self.ZONE_BALL_RATIO)
         logging.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=} {cv.contourArea(self.ball_contour)=}")
+        print(f"ball area: d (scaled) = {max(self.ball_roi.w, self.ball_roi.h) / FrameProcessor.INPUT_SCALE:.0f}\
+                area (scaled) = {self.ball_area / (FrameProcessor.INPUT_SCALE ** 2):.0f} {self.thresh_val=}")
         return True
 
     def get_current_state(self, frame: NDARRAY) -> str:
@@ -185,25 +191,20 @@ class StartZone:
         roi_img = self.zone_roi.extract_img(frame)
         gray = self.__preprocess_image(roi_img, "Stream")
         _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
-        # Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+        Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
         contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        if self.ball_area is None:
-            self.zone_state = 'M' # todo remove
-            return self.zone_state
 
-        contours = [cont for cont in contours if self.ball_area * 0.5 < cv.contourArea(cont)]  # remove too small conts
-        all_cnt = len(contours)
-        contours = [cont for cont in contours if cv.contourArea(cont) < self.ball_area * 3]  # remove too big conts
-        # logging.debug(f"get_status: found contours: all = {all_cnt} not_big = {len(contours)} ")
-
-        if all_cnt == 0:
+        contours = [cont for cont in contours if self.ball_area * self.MIN_BALL_AREA_RATIO < cv.contourArea(cont)]  # remove too small conts
+        if len(contours) == 0:
             self.zone_state = 'E'
             return self.zone_state
-        if len(contours) == 1 and not self.zone_roi.is_touched_border(contours[0]):
+
+        contours = [cont for cont in contours if cv.contourArea(cont) < self.ball_area * self.MAX_BALL_AREA_RATIO]  # remove too big conts
+        if len(contours) == 1 and not self.zone_roi.is_touched_to_contour(contours[0]):
             match_rate = cv.matchShapes(contours[0], self.ball_contour, 1, 0)
             # logging.debug(f" {match_rate=}")
-            if match_rate < 0.5:
+            if match_rate < self.MAX_MATCH_RATE:
                 self.zone_state = 'B'
                 return self.zone_state
         self.zone_state = 'M'
@@ -214,7 +215,6 @@ class StartZone:
         self.click_roi = ROI(frame.shape, self.click_xy, self.CLICK_ZONE_SIZE)
         self.click_roi_img = self.click_roi.extract_img(frame)
         self.click_roi_gray = self.__preprocess_image(self.click_roi_img, "Start zone")
-        debug_thresh_out_fs = WriteStream("thresh_levels.avi") if save_debug_thresh_images else None
         level_results: List[Dict] = []
         for thresh in range(20, 230, 1):
             _, img = cv.threshold(self.click_roi_gray, thresh, 255, cv.THRESH_BINARY)
@@ -222,18 +222,21 @@ class StartZone:
 
             contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
             # logging.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
-            if len(contours) != 1:
+            if save_debug_thresh_images:
+                Util.write_bw(f"images/thresh_{thresh}.png", img, f"frame {FrameProcessor.frame_cnt}: {thresh=}")
+
+            if len(contours) != 1:  # должен быть только один контур мяча. если несколько - меняем порог
                 continue
             contour = contours[0]
             area = cv.contourArea(contour)
             x, y, w, h = cv.boundingRect(contour)
-            if max(w, h) / max(self.click_roi_gray.shape) > 0.9:  # contour is as big as total image - so is useless
+            if max(w, h) / max(self.click_roi_gray.shape) > self.MAX_RECT_RATIO:  # contour is as big as total image - so is useless
                 continue
+            if x == 0 or y == 0 or x + w == self.click_roi.w or y + h == self.click_roi.h:
+                continue  # contour is touched to border
             result = {"thresh": thresh, "area": area, "contour": contour}
             level_results.append(result)
-            # logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {len(result['contour'])=}  ")
-            if save_debug_thresh_images:
-                debug_thresh_out_fs.write_bw(img, f"frame {FrameProcessor.frame_cnt}: {thresh=} {area=}")
+            logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {ROI(frame.shape, contour=contour)}  ")
 
         if len(level_results) == 0:  # no appropriate thresh found
             return None, None
@@ -244,14 +247,16 @@ class StartZone:
             best_result = level_results[1]
 
         otsu_thresh, otsu_img = cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-        otsu_contours, _ = cv.findContours(otsu_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        otsu_contours = sorted(otsu_contours, key=lambda cont: cv.contourArea(cont), reverse=True)
-        otsu_cont = otsu_contours[0]
-        logging.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
-        return otsu_thresh, otsu_cont
-        # logging.debug(f"{best_result['thresh']=} {best_result['area']=} \
-        #         otsu = {cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[0]}")
-        # return best_result["thresh"], best_result["contour"]
+        # otsu_contours, _ = cv.findContours(otsu_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        # otsu_contours = sorted(otsu_contours, key=lambda cont: cv.contourArea(cont), reverse=True)
+        # otsu_cont = otsu_contours[0]
+        # logging.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
+        # return otsu_thresh, otsu_cont
+        logging.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {otsu_thresh}")
+        Util.write_bw(f"images/best_{best_result['thresh']}.png", cv.threshold(self.click_roi_gray, best_result['thresh'], 255, cv.THRESH_BINARY)[1],
+                      f"{best_result['area']=}")
+        Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
+        return best_result["thresh"], best_result["contour"]
 
     def update_thresh(self, frame: NDARRAY) -> None:
         thresh_val, _ = self.__get_best_threshold(frame, save_debug_thresh_images=False)
@@ -344,6 +349,7 @@ class History:
             out_fs.write(out_frame)
         del out_fs
         logging.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
+        print(f"swing clip written: {out_file_name=}")
         return out_file_name
 
     @classmethod
