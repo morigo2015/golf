@@ -23,7 +23,7 @@ str_ = TypeVar('str_', str, type(None))
 class FrameProcessor:
     SWING_CLIP_PREFIX: str = "swings/"
     NEED_TRANSPOSE: bool = True  # False
-    NEED_FLIP: bool = False
+    NEED_FLIP: bool = True
     INPUT_SCALE: float = 0.7
     frame_cnt: int = -1
     swing_cnt = 0
