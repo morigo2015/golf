@@ -10,6 +10,7 @@ from playsound import playsound
 
 from my_util import Util, FrameStream, WriteStream
 from timer import TimeMeasure
+
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 # type hints abbreviations since current version of Python doesn't support |None in hints
@@ -18,6 +19,10 @@ Point_ = TypeVar('Point_', Point, type(None))
 Ndarray_ = TypeVar('Ndarray_', np.ndarray, type(None))
 float_ = TypeVar('float_', float, type(None))
 str_ = TypeVar('str_', str, type(None))
+
+
+def dummy_func():
+    pass
 
 
 class FrameProcessor:
@@ -35,7 +40,6 @@ class FrameProcessor:
         self.start_zone: StartZone = StartZone(win_name, need_load=False)
 
     def process_frame(self, frame: np.ndarray, frame_cnt: int, zone_draw_mode: bool = False) -> np.ndarray:
-        # TimeMeasure.set("prcocess_frame start")
         FrameProcessor.frame_cnt = frame_cnt  # class variable to allow access by class name
         if FrameProcessor.INPUT_SCALE != 1.0:
             frame = cv.resize(frame, None, fx=FrameProcessor.INPUT_SCALE, fy=FrameProcessor.INPUT_SCALE)  # !!!
@@ -43,7 +47,6 @@ class FrameProcessor:
             frame = cv.transpose(frame)
         if FrameProcessor.NEED_FLIP:
             frame = cv.flip(frame, 1)
-        # TimeMeasure.set("prcocess_frame: frame prepared")
 
         if not self.start_zone.ball_is_clicked():
             return frame
@@ -51,23 +54,16 @@ class FrameProcessor:
             if not self.start_zone.find_start_zone(frame):
                 print(" Error!!! ball was clicked however Start Zone cannot be found!")
                 return frame
-        # TimeMeasure.set("prcocess_frame: start zone finded")
 
         start_zone_state = self.start_zone.get_current_state(frame)
-        # TimeMeasure.set("prcocess_frame: current state found ")
 
         History.save_state(start_zone_state, frame)
-        # TimeMeasure.set("prcocess_frame: histry-save-state ")
-
-        # if start_zone_state == 'B':
-        #     self.start_zone.update_thresh(frame)
 
         r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
 
         if r:
             History.write_swing(r)
-            # playsound('sound/GolfSwing2.mp3')
-
+            playsound('sound/GolfSwing2.mp3')
             History.reset()
             FrameProcessor.swing_cnt += 1
 
@@ -78,20 +74,8 @@ class FrameProcessor:
     def __del__(self):
         self.start_zone.save()
         print(f"Totally swing found: {FrameProcessor.swing_cnt}")
-        print(f"\nTimeMeasure results:\n{TimeMeasure.results()}")
+        # print(f"\nTimeMeasure results:\n{TimeMeasure.results()}")
 
-
-
-# class StartBall:
-#     x, y = None, None
-#     contour = None
-#     area: float = None
-#
-#     def __init__(self,x,y,contour):
-#         self.x, self.y = x, y
-#         self.contour = contour
-#         self.area = cv.contourArea(contour)
-#         logging.debug(f" StartBall is set: {x=} {y=} {len(self.contour)=} {self.area=}")
 
 class ROI:
 
@@ -137,7 +121,7 @@ ROI_ = TypeVar('ROI_', ROI, type(None))
 
 class StartZone:
     BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE) // 2 * 2 + 1)  # must be odd
-    MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
+    MAX_BALL_SIZE: int = int(35 * FrameProcessor.INPUT_SCALE)
     MIN_BALL_AREA_RATIO: float = 0.2  # min ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_BALL_AREA_RATIO: int = 4  # max ration of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_MATCH_RATE: float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
@@ -347,7 +331,6 @@ class History:
 
     @classmethod
     def save_state(cls, state: str, frame: np.ndarray):
-        pass
         cls.states_string += state
         cls.frames_buffer.append(frame.copy())
         # logging.debug(f"{len(cls.frames_buffer)=}")

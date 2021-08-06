@@ -2,10 +2,12 @@ import logging
 import math
 import glob
 import time
+from threading import Thread
+from queue import Queue, Empty, Full
+
 import numpy as np
 import cv2 as cv
 from typing import List, Tuple, Union, Any, TypeVar, Dict, Deque
-
 
 
 class Util:
@@ -93,8 +95,8 @@ class Util:
         return joined_lst
 
     @staticmethod
-    def show_img(img, name="",delay=0):
-        if delay <0: # just skip this debug
+    def show_img(img, name="", delay=0):
+        if delay < 0:  # just skip this debug
             return
         cv.imshow(f"{name}", img)
         ch = cv.waitKey(delay)
@@ -110,20 +112,135 @@ class Util:
         cv.imwrite(file_name, colour_img)
 
 
+class AsyncVideoStream:
+    DELAY_EMPTY = 0.001  # delay when queue is full (in sec)
+    DELAY_FULL = 0.001  # delay when queue is empty (in sec)
+
+    def __init__(self, handle, queue_size=50, show_qsize=True, frame_stream = None):
+        # initialize the file video stream along with the boolean used to indicate if the thread should be stopped or not
+        self.stream = handle  # cv2.VideoCapture(path)
+        self.queue_size = queue_size
+        self.show_qsize = show_qsize
+        self.frame_stream = frame_stream
+        self.stopped = False
+
+        # initialize the queue used to store frames read from the video file
+        self.Q = Queue(maxsize=queue_size)
+        self.dropped_cnt = 0
+        self.read_frames_cnt = 0
+
+    def update(self):
+        # main procedure for reading-thread
+        while True:
+            # to stop the reading-thread,  self.stooped will be set in main thread
+            if self.stopped:
+                logging.debug(f'update: stopped')
+                return
+
+            (grabbed, frame) = self.stream.read()
+            self.read_frames_cnt += 1
+
+            if not grabbed:
+                logging.debug('not grabbed - stream is finished')
+                self.stop()
+                return
+
+            # if self.show_qsize:
+                # display the size of the queue on the frame
+                # qsz = self.qsize()  # (current size, max size)
+                # cv.putText(frame, f"Queue: {qsz[0]} of {qsz[1]}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+            try:
+                self.Q.put(frame, block=False)
+            except Full:
+                # print('q full - last frame is dropped!!! ')
+                self.dropped_cnt += 1
+                if self.frame_stream:
+                    if self.frame_stream.async_mode:
+                        logging.debug(f"update: {self.dropped_cnt} ")
+                        # self.clear()
+                        continue  # drop this frame not ever try to save it
+
+                # time.sleep(self.DELAY_FULL)  # we are in reading thread now and main thread isn't ready yet
+
+    def re_init(self, handle):
+        # reinit after input stream has been broken and restored
+        if handle:
+            self.stream = handle
+        self.stopped = False
+        self.start()
+
+    def clear(self):
+        with self.Q.mutex:
+            self.Q.queue.clear()
+        logging.debug(f"AsyncVideoStream.clear:: queue is cleared. qsize = {self.qsize()}")
+        # while not self.Q.empty():
+        #     try:
+        #         self.Q.get(False)
+        #     except Empty:
+        #         continue
+        #     self.Q.task_done()
+
+    def start(self):
+        # start a thread to read frames from the file video stream
+        t = Thread(target=self.update, args=())
+        t.daemon = True
+        t.start()
+        return self
+
+    def read(self):
+        if self.stopped:
+            return False, None
+        while True:
+            try:
+                frame = self.Q.get(block=False)
+                return True, frame
+            except Empty:
+                logging.debug('q empty - lets sleep awhile')
+                # time.sleep(self.DELAY_EMPTY)  # we are in main thread now and there is nothing to do yet
+            if self.stopped:
+                return False, None
+
+    def qsize(self):
+        return self.Q.qsize(), self.queue_size - 1
+
+    def more(self):
+        # return True if there are still frames in the queue
+        return self.Q.qsize() > 0
+
+    def stop(self):
+        # indicate that the thread should be stopped
+        self.stopped = True
+        logging.debug('stop is called')
+
+
 class FrameStream:
-    def __init__(self, source_path):
+    def __init__(self, source_path, show_qsize=True):
         self.path = source_path
         self.frame_cnt = 0
+        self.async_mode = False  # True for rtsp, False for any else
+        self.suspend_mode = False  # set by self.suspend() fill self.resume() is called
 
         if source_path[-4:] == ".png":
             self.mode = 'images'
+            self.async_mode = False
             self.file_name_iter = iter(sorted(glob.glob(source_path)))
+        elif source_path[:4] == "rtsp":
+            # open async
+            self.mode = 'rtsp'
+            self.async_mode = True
+            self.cap = cv.VideoCapture(source_path)
+            self.async_mgr = AsyncVideoStream(self.cap, show_qsize=show_qsize)
+            self.async_mgr.start()
+            # time.sleep(1.0)  # to fill queue by frames
         else:
             self.mode = 'video'
+            self.async_mode = False
             self.cap = cv.VideoCapture(source_path)
             if not self.cap.isOpened():
                 print(f"Cannot open source {source_path}")
                 exit()
+
         self.start = time.time()
 
     def next_frame(self):
@@ -136,22 +253,32 @@ class FrameStream:
             except StopIteration:
                 frame = None
                 frame_name = "End_of_list"
-        else:
-            ret, frame = self.cap.read()
-            frame_name = f"Frame_{self.frame_cnt}"
-            if not ret:
-                frame = None
+            return frame, frame_name, self.frame_cnt
+        if self.mode == 'video':
+            is_opened, frame = self.cap.read()
+        else:  # rtsp - async
+            is_opened, frame = self.async_mgr.read()
+        frame_name = f"Frame_{self.frame_cnt}" if is_opened else None
         return frame, frame_name, self.frame_cnt
 
     def total_time(self):
-        return time.time()-self.start
+        return time.time() - self.start
 
     def fps(self):
         return self.frame_cnt / self.total_time()
 
+    def suspend(self):
+        # suspend input stream till self.resume().  Action depends on sync / async
+        self.suspend_mode = True
+
+    def resume(self):
+        # resume input stream after suspend()
+        self.suspend_mode = False
+
     def __del__(self):
         if self.mode == 'video':
             self.cap.release()
+
 
 class WriteStream:
     # запись в файл, отложенное открытие потока (до первого кадра для определения shape)
@@ -173,10 +300,50 @@ class WriteStream:
         # self.out.release() # todo вернуть обратно
         # logging.debug(f"file {self.file_name} released")
 
+
 # -------------------------------------------------------------------------------------------------------------
+logging.basicConfig(filename='debug_async.log', level=logging.DEBUG)
+
+
+def test_async_read():
+    frame_mode = False
+    src = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
+    # src = "video/phone-profil-evening-1.mp4"
+    input_fs = FrameStream(src, show_qsize=True)
+    while True:
+        # time.sleep(0.1)
+        frame, frame_name, frame_cnt = input_fs.next_frame()
+        if frame is None:
+            break
+
+        out_frame = frame
+        cv.putText(out_frame, f"{frame_cnt}", (5, 12), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+        cv.imshow('test async read', out_frame)
+        ch = cv.waitKey(0 if frame_mode else 1)
+        # logging.debug(f"qsize = {input_fs.async_mgr.qsize()}")
+        if ch == ord('q'):
+            break
+        elif ch == ord('g'):
+            frame_mode = False
+            input_fs.resume()
+            continue
+        elif ch == ord(' '):
+            frame_mode = True
+            input_fs.suspend()
+            continue
+        elif ch == ord('r'):
+            logging.debug('****************  r pressed')
+            input_fs.async_mgr.clear()
+    print(f"Finish. Duration={input_fs.total_time():.0f} sec, {input_fs.frame_cnt} frames,  fps={input_fs.fps():.1f} f/s")
+
+    del input_fs
+    cv.destroyAllWindows()
+
 
 def main():
-    print(f"{Util.dist((100, 100), (200, 200))}")
+    # print(f"{Util.dist((100, 100), (200, 200))}")
+    test_async_read()
 
 
 if __name__ == '__main__':
