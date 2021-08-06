@@ -12,7 +12,7 @@ from my_util import FrameStream
 inp_source_name = 'thresh_level.avi'  # tst.mp4
 # inp_source_name = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
-out_file_name = 'video/out2.avi'
+out_file_name = '../video/out2.avi'
 
 # frame_mode_initial = False
 frame_mode_initial = True
