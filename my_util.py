@@ -116,12 +116,11 @@ class AsyncVideoStream:
     DELAY_EMPTY = 0.001  # delay when queue is full (in sec)
     DELAY_FULL = 0.001  # delay when queue is empty (in sec)
 
-    def __init__(self, handle, queue_size=50, show_qsize=True, frame_stream = None):
+    def __init__(self, handle, queue_size=50, show_qsize=True):
         # initialize the file video stream along with the boolean used to indicate if the thread should be stopped or not
         self.stream = handle  # cv2.VideoCapture(path)
         self.queue_size = queue_size
         self.show_qsize = show_qsize
-        self.frame_stream = frame_stream
         self.stopped = False
 
         # initialize the queue used to store frames read from the video file
@@ -145,23 +144,31 @@ class AsyncVideoStream:
                 self.stop()
                 return
 
-            # if self.show_qsize:
-                # display the size of the queue on the frame
-                # qsz = self.qsize()  # (current size, max size)
-                # cv.putText(frame, f"Queue: {qsz[0]} of {qsz[1]}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
             try:
                 self.Q.put(frame, block=False)
             except Full:
                 # print('q full - last frame is dropped!!! ')
                 self.dropped_cnt += 1
-                if self.frame_stream:
-                    if self.frame_stream.async_mode:
-                        logging.debug(f"update: {self.dropped_cnt} ")
-                        # self.clear()
-                        continue  # drop this frame not ever try to save it
-                    else:  # sync mode
-                        time.sleep(self.DELAY_FULL)
+                # logging.debug(f"update: {self.dropped_cnt} ")
+                continue  # drop this frame not ever try to save it in AsyncVideoStream
+
+    def read(self):
+        if self.stopped:
+            return False, None
+        while True:
+            try:
+                frame = self.Q.get(block=False)
+                if self.show_qsize:
+                    # display the size of the queue on the frame
+                    qsz = self.qsize()  # (current size, max size)
+                    cv.putText(frame, f"Queue: {qsz[0]}/{qsz[1]} Dropped:{self.dropped_cnt}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                return True, frame
+            except Empty:
+                pass
+                # logging.debug('q empty - lets sleep awhile')
+                # time.sleep(self.DELAY_EMPTY)  # we are in main thread now and there is nothing to do yet
+            if self.stopped:
+                return False, None
 
     def re_init(self, handle):
         # reinit after input stream has been broken and restored
@@ -187,20 +194,6 @@ class AsyncVideoStream:
         t.daemon = True
         t.start()
         return self
-
-    def read(self):
-        if self.stopped:
-            return False, None
-        while True:
-            try:
-                frame = self.Q.get(block=False)
-                return True, frame
-            except Empty:
-                pass
-                # logging.debug('q empty - lets sleep awhile')
-                # time.sleep(self.DELAY_EMPTY)  # we are in main thread now and there is nothing to do yet
-            if self.stopped:
-                return False, None
 
     def qsize(self):
         return self.Q.qsize(), self.queue_size - 1
@@ -303,10 +296,10 @@ class WriteStream:
 
 
 # -------------------------------------------------------------------------------------------------------------
-logging.basicConfig(filename='debug_async.log', level=logging.DEBUG)
 
 
 def test_async_read():
+    logging.basicConfig(filename='debug_test_async.log', level=logging.DEBUG)
     frame_mode = False
     src = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
     # src = "video/phone-profil-evening-1.mp4"
