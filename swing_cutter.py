@@ -12,11 +12,17 @@ from playsound import playsound
 from my_util import Util, FrameStream, WriteStream
 from timer import TimeMeasure
 
+# log_zone = logging.getLogger('log_zone')
+# log_state = logging.getLogger('log_state')
+
+
 # logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 log_zone = logging.getLogger('_zone')
+log_zone.propagate = False
 log_zone.addHandler(logging.FileHandler('debug_log_zone.log'))
 log_zone.setLevel(logging.DEBUG)
 log_state = logging.getLogger('_state')
+log_state.propagate = False
 log_state.addHandler(logging.FileHandler('debug_log_state.log'))
 log_state.setLevel(logging.DEBUG)
 
@@ -122,7 +128,7 @@ ROI_ = TypeVar('ROI_', ROI, type(None))
 
 class StartZone:
     BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE) // 2 * 2 + 1)  # must be odd
-    MAX_BALL_SIZE: int = int(35 * FrameProcessor.INPUT_SCALE)
+    MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
     MIN_BALL_AREA_RATIO: float = 0.2  # min ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_BALL_AREA_RATIO: int = 4  # max ration of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_MATCH_RATE: float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
@@ -166,10 +172,7 @@ class StartZone:
 
     def find_start_zone(self, frame: np.ndarray) -> bool:
         # try to set up Start Zone (ball, border):
-        # click_xy   -->   click_roi (click_xy.center; size = n * MAX_BALL_SIZE   -->
-        #            -->   preprocess(gray,blur,dilute)   -->
-        #            -->   find best threshold (one contour of biggest but reasonable size), ball_size, thresh_val   -->
-        #            -->   zone_roi (click_xy.center; size = n * ball_size)
+        # 4)           -->   zone_roi (click_xy.center; size = n * ball_size)
         # return True if ok (found and set up), else - False
         if not self.click_xy:  # ball was not clicked yet
             return False
@@ -184,8 +187,8 @@ class StartZone:
         ball_size = max(self.ball_roi.w, self.ball_roi.h)
         self.zone_roi = ROI(frame.shape, self.click_roi.center_xy(), ball_size * self.ZONE_BALL_RATIO)
         log_zone.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=} {cv.contourArea(self.ball_contour)=}")
-        print(f"ball area: d (scaled) = {max(self.ball_roi.w, self.ball_roi.h) / FrameProcessor.INPUT_SCALE:.0f}\
-                area (scaled) = {self.ball_area / (FrameProcessor.INPUT_SCALE ** 2):.0f} {self.thresh_val=}")
+        print(f"ball area: d (unscaled) = {max(self.ball_roi.w, self.ball_roi.h) / FrameProcessor.INPUT_SCALE:.0f}\
+                area (unscaled) = {self.ball_area / (FrameProcessor.INPUT_SCALE ** 2):.0f} {self.thresh_val=}")
         return True
 
     def get_current_state(self, frame: np.ndarray) -> str:
@@ -213,12 +216,23 @@ class StartZone:
         return self.zone_state
 
     def __get_best_threshold(self, frame: np.ndarray, save_debug_thresh_images: bool) -> Tuple[float_, Ndarray_]:
-        # iterating over threshold levels to find one with max (but not as big as total roi) contour area
+        """ iterating over threshold levels to find one with max (but not as big as total roi) contour area
+        :param frame:
+        :param save_debug_thresh_images: True - save threshold images for all levels in images/ for debug
+        :return: best thresh, ball contour for that thresh
+        Actions:
+        1) click_xy   -->   click_roi (click_xy.center; size = n * MAX_BALL_SIZE   -->
+        2)           -->   preprocess(gray,blur,dilute)   -->
+        3)           -->   find best threshold (one contour of biggest but reasonable size), ball_size, thresh_val   -->
+        """
+        # 1) click_xy   -->   click_roi (click_xy.center; size = n * MAX_BALL_SIZE   -->
         self.click_roi = ROI(frame.shape, self.click_xy, self.CLICK_ZONE_SIZE)
         self.click_roi_img = self.click_roi.extract_img(frame)
+        # 2)           -->   preprocess(gray,blur,dilute)   -->
         self.click_roi_gray = self.__preprocess_image(self.click_roi_img, "Start zone")
+        # 3)           -->   find best threshold (one contour of biggest but reasonable size), ball_size, thresh_val   -->
         level_results: List[Dict] = []
-        for thresh in range(20, 230, 1):
+        for thresh in range(20, 255 - 20, 1):
             _, img = cv.threshold(self.click_roi_gray, thresh, 255, cv.THRESH_BINARY)
             # Util.show_img(img, f"thresh level = {thresh}", 1)
 
@@ -249,11 +263,6 @@ class StartZone:
             best_result = level_results[1]
 
         otsu_thresh, otsu_img = cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-        # otsu_contours, _ = cv.findContours(otsu_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        # otsu_contours = sorted(otsu_contours, key=lambda cont: cv.contourArea(cont), reverse=True)
-        # otsu_cont = otsu_contours[0]
-        # log_zone.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
-        # return otsu_thresh, otsu_cont
         log_zone.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {otsu_thresh}")
         if save_debug_thresh_images:
             Util.write_bw(f"images/best_{best_result['thresh']}.png",
@@ -261,14 +270,6 @@ class StartZone:
                           f"{best_result['area']=}")
             Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
         return best_result["thresh"], best_result["contour"]
-
-    # def update_thresh(self, frame: np.ndarray) -> None:
-    #     thresh_val, _ = self.__get_best_threshold(frame, save_debug_thresh_images=False)
-    #     if thresh_val is None:
-    #         return  # Too bad. We can't found best threshold. Touch nothing. Hope next frames will be better.
-    #     # we don't touch ball_area, ball_size, ball_contour, zone_roi. threshold only.
-    #     logging.debug(f"update_thresh: thresh level is changed!! {self.thresh_val} --> {thresh_val}")
-    #     self.thresh_val = thresh_val
 
     def zone_is_found(self) -> bool:
         return False if self.zone_roi is None else True

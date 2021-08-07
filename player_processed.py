@@ -24,13 +24,13 @@ NEED_TRANSPOSE: bool = True  # False
 NEED_FLIP: bool = NEED_TRANSPOSE
 
 OUT_FILE_NAME = 'video/out2.avi'
-WRITE_MODE = False  # if INPUT_SOURCE[0:4] == 'rtsp' else False
+WRITE_MODE = True if INPUT_SOURCE[0:4] == 'rtsp' else False
 WRITE_FPS = 25
 
 FRAME_MODE_INITIAL = False
 ZONE_DRAW_INITIAL = True
 DELAY = 1  # delay in normal 'g'-mode
-WIN_NAME = "Watcher"
+WIN_NAME = "Observer"
 
 
 def main():
