@@ -27,8 +27,6 @@ def dummy_func():
 
 class FrameProcessor:
     SWING_CLIP_PREFIX: str = "swings/"
-    NEED_TRANSPOSE: bool = True  # False
-    NEED_FLIP: bool = True
     INPUT_SCALE: float = 0.7
     frame_cnt: int = -1
     swing_cnt = 0
@@ -43,10 +41,6 @@ class FrameProcessor:
         FrameProcessor.frame_cnt = frame_cnt  # class variable to allow access by class name
         if FrameProcessor.INPUT_SCALE != 1.0:
             frame = cv.resize(frame, None, fx=FrameProcessor.INPUT_SCALE, fy=FrameProcessor.INPUT_SCALE)  # !!!
-        if FrameProcessor.NEED_TRANSPOSE:
-            frame = cv.transpose(frame)
-        if FrameProcessor.NEED_FLIP:
-            frame = cv.flip(frame, 1)
 
         if not self.start_zone.ball_is_clicked():
             return frame
@@ -254,9 +248,10 @@ class StartZone:
         # logging.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
         # return otsu_thresh, otsu_cont
         logging.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {otsu_thresh}")
-        Util.write_bw(f"images/best_{best_result['thresh']}.png", cv.threshold(self.click_roi_gray, best_result['thresh'], 255, cv.THRESH_BINARY)[1],
-                      f"{best_result['area']=}")
-        Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
+        if save_debug_thresh_images:
+            Util.write_bw(f"images/best_{best_result['thresh']}.png", cv.threshold(self.click_roi_gray, best_result['thresh'], 255, cv.THRESH_BINARY)[1],
+                          f"{best_result['area']=}")
+            Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
         return best_result["thresh"], best_result["contour"]
 
     # def update_thresh(self, frame: np.ndarray) -> None:
@@ -297,7 +292,7 @@ class StartZone:
         if self.click_xy:
             cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
         # # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
-        cv.putText(frame, f"{self.zone_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
+        cv.putText(frame, f"{self.zone_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
         return frame
 
     def load(self):

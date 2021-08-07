@@ -160,8 +160,8 @@ class AsyncVideoStream:
                         logging.debug(f"update: {self.dropped_cnt} ")
                         # self.clear()
                         continue  # drop this frame not ever try to save it
-
-                # time.sleep(self.DELAY_FULL)  # we are in reading thread now and main thread isn't ready yet
+                    else:  # sync mode
+                        time.sleep(self.DELAY_FULL)
 
     def re_init(self, handle):
         # reinit after input stream has been broken and restored
@@ -196,7 +196,8 @@ class AsyncVideoStream:
                 frame = self.Q.get(block=False)
                 return True, frame
             except Empty:
-                logging.debug('q empty - lets sleep awhile')
+                pass
+                # logging.debug('q empty - lets sleep awhile')
                 # time.sleep(self.DELAY_EMPTY)  # we are in main thread now and there is nothing to do yet
             if self.stopped:
                 return False, None

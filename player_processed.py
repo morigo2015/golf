@@ -16,9 +16,12 @@ import cv2 as cv
 from my_util import FrameStream, WriteStream
 from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
-INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-# INPUT_SOURCE = 'video/fac-daylight-3.avi'  # .avi b2_cut fac-daylight-3 phone-range-2.mp4
+# INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
+INPUT_SOURCE = 'video/sunlight-1.mp4'  # .avi b2_cut fac-daylight-3 phone-range-2.mp4
 # INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
+
+NEED_TRANSPOSE: bool = True  # False
+NEED_FLIP: bool = False
 
 OUT_FILE_NAME = 'video/out2.avi'
 WRITE_MODE = False  # if INPUT_SOURCE[0:4] == 'rtsp' else False
@@ -44,6 +47,10 @@ def main():
         frame, frame_name, frame_cnt = input_fs.next_frame()
         if frame is None:
             break
+        if NEED_TRANSPOSE:
+            frame = cv.transpose(frame)
+        if NEED_FLIP:
+            frame = cv.flip(frame, 1)
 
         out_frame = frame_proc.process_frame(frame, frame_cnt, zone_draw_mode)
 
