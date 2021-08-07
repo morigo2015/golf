@@ -3,6 +3,7 @@ from typing import List, Tuple, TypeVar, Dict, Deque
 from collections import deque
 import logging
 import datetime
+import itertools
 
 import cv2 as cv
 import numpy as np
@@ -11,7 +12,13 @@ from playsound import playsound
 from my_util import Util, FrameStream, WriteStream
 from timer import TimeMeasure
 
-logging.basicConfig(filename='debug.log', level=logging.DEBUG)
+# logging.basicConfig(filename='debug.log', level=logging.DEBUG)
+log_zone = logging.getLogger('_zone')
+log_zone.addHandler(logging.FileHandler('debug_log_zone.log'))
+log_zone.setLevel(logging.DEBUG)
+log_state = logging.getLogger('_state')
+log_state.addHandler(logging.FileHandler('debug_log_state.log'))
+log_state.setLevel(logging.DEBUG)
 
 # type hints abbreviations since current version of Python doesn't support |None in hints
 Point = Tuple[int, int]
@@ -53,7 +60,7 @@ class FrameProcessor:
 
         History.save_state(start_zone_state, frame)
 
-        r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string)  # B{7}[MB]*E{7}$
+        r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string())  # B{7}[MB]*E{7}$
 
         if r:
             History.write_swing(r)
@@ -145,7 +152,7 @@ class StartZone:
     def __zone_reset(self) -> None:
         self.click_xy, self.ball_contour, self.click_roi, self.click_roi_img = [None] * 4
         self.thresh_val, self.zone_roi, self.ball_roi, self.ball_area, self.zone_state = [None] * 5
-        logging.debug("start zone reset")
+        log_zone.debug("start zone reset")
 
     def __preprocess_image(self, roi_img: np.ndarray, roi_name: str = "preprocess image") -> np.ndarray:
         # prepare roi image: bgr->gray->blur->open->close
@@ -169,14 +176,14 @@ class StartZone:
 
         self.thresh_val, self.ball_contour = self.__get_best_threshold(frame, save_debug_thresh_images=True)
         if not self.thresh_val:  # can't found ball contour
-            logging.debug(f"get_zone: failed to find threshold based on click_xy")
+            log_zone.debug(f"get_zone: failed to find threshold based on click_xy")
             return False
 
         self.ball_area = cv.contourArea(self.ball_contour)
         self.ball_roi = ROI(frame.shape, contour=self.ball_contour)
         ball_size = max(self.ball_roi.w, self.ball_roi.h)
         self.zone_roi = ROI(frame.shape, self.click_roi.center_xy(), ball_size * self.ZONE_BALL_RATIO)
-        logging.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=} {cv.contourArea(self.ball_contour)=}")
+        log_zone.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=} {cv.contourArea(self.ball_contour)=}")
         print(f"ball area: d (scaled) = {max(self.ball_roi.w, self.ball_roi.h) / FrameProcessor.INPUT_SCALE:.0f}\
                 area (scaled) = {self.ball_area / (FrameProcessor.INPUT_SCALE ** 2):.0f} {self.thresh_val=}")
         return True
@@ -198,7 +205,7 @@ class StartZone:
         contours = [cont for cont in contours if cv.contourArea(cont) < self.ball_area * self.MAX_BALL_AREA_RATIO]  # remove too big conts
         if len(contours) == 1 and not self.zone_roi.is_touched_to_contour(contours[0]):
             match_rate = cv.matchShapes(contours[0], self.ball_contour, 1, 0)
-            # logging.debug(f" {match_rate=}")
+            # log_zone.debug(f" {match_rate=}")
             if match_rate < self.MAX_MATCH_RATE:
                 self.zone_state = 'B'
                 return self.zone_state
@@ -216,7 +223,7 @@ class StartZone:
             # Util.show_img(img, f"thresh level = {thresh}", 1)
 
             contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-            # logging.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
+            # log_zone.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
             if save_debug_thresh_images:
                 Util.write_bw(f"images/thresh_{thresh}.png", img, f"frame {FrameProcessor.frame_cnt}: {thresh=}")
 
@@ -231,7 +238,7 @@ class StartZone:
                 continue  # contour is touched to border
             result = {"thresh": thresh, "area": area, "contour": contour}
             level_results.append(result)
-            logging.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {ROI(frame.shape, contour=contour)}  ")
+            log_zone.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {ROI(frame.shape, contour=contour)}  ")
 
         if len(level_results) == 0:  # no appropriate thresh found
             return None, None
@@ -245,11 +252,12 @@ class StartZone:
         # otsu_contours, _ = cv.findContours(otsu_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         # otsu_contours = sorted(otsu_contours, key=lambda cont: cv.contourArea(cont), reverse=True)
         # otsu_cont = otsu_contours[0]
-        # logging.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
+        # log_zone.debug(f"best thresh - return otsu {otsu_thresh=} {cv.contourArea(otsu_cont)=}")
         # return otsu_thresh, otsu_cont
-        logging.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {otsu_thresh}")
+        log_zone.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {otsu_thresh}")
         if save_debug_thresh_images:
-            Util.write_bw(f"images/best_{best_result['thresh']}.png", cv.threshold(self.click_roi_gray, best_result['thresh'], 255, cv.THRESH_BINARY)[1],
+            Util.write_bw(f"images/best_{best_result['thresh']}.png",
+                          cv.threshold(self.click_roi_gray, best_result['thresh'], 255, cv.THRESH_BINARY)[1],
                           f"{best_result['area']=}")
             Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
         return best_result["thresh"], best_result["contour"]
@@ -301,66 +309,60 @@ class StartZone:
     def save(self):
         pass
 
-    # def xy_zone_2_frame(self, zone_xy:POINT) -> POINT:
-    #     return zone_xy[0] + self.click_roi.x, zone_xy[1] + self.click_roi.y
-    #
-    # def xy_frame_2_zone(self, frame_xy:POINT) -> POINT:
-    #     return frame_xy[0] - self.click_roi.x, frame_xy[1] - self.click_roi.y
-
-    # def get_closest_brightest(self, gray):
-    #     # return coordinate of closest to click_xy point which is == to max(gray)
-    #     click_x, click_y = self.xy_frame_2_zone(self.click_xy)
-    #     brightest_points = np.where(gray == np.amax(gray))  # tuple of 2 arrays: x[] and y[] of grightest points
-    #     brightest_points_lst = list(zip(brightest_points[0], brightest_points[1]))  # list of tuples (x,y) of brightest points
-    #     closest_point = sorted(brightest_points_lst, key=lambda xy: np.sqrt((xy[0] - click_x) ** 2 + (xy[1] - click_y) ** 2))[0]
-    #     logging.debug(f"get_closest_brightest for {self.click_xy=} ({click_x=},{click_y=}) -->  {closest_point=}")
-    #     self.closest_brightest = int(closest_point[0]), int(closest_point[1])
-    #     return self.closest_brightest
-
 
 class History:
     FRAME_BUFF_SZ: int = 300
     MAX_CLIP_SZ: int = 150
-    frames_buffer: Deque = deque(maxlen=FRAME_BUFF_SZ)
-    states_string: str = ""
+    frames_descr_buffer: Deque = deque(maxlen=FRAME_BUFF_SZ)
+
+    @classmethod
+    def repr(cls):
+        return f"len = {len(cls.frames_descr_buffer)} history={cls.squeeze_states_string(cls.states_string())}"
 
     @classmethod
     def save_state(cls, state: str, frame: np.ndarray):
-        cls.states_string += state
-        cls.frames_buffer.append(frame.copy())
-        # logging.debug(f"{len(cls.frames_buffer)=}")
+        # cls.states_string += state
+        cls.frames_descr_buffer.append((state, frame.copy()))
+        log_state.debug(f"save_state({state} History: {cls.repr()}")
+
+    @classmethod
+    def states_string(cls):
+        return "".join([d[0] for d in cls.frames_descr_buffer])
+
+    @staticmethod
+    def squeeze_states_string(inp_str):
+        ch_grps = [(ch, len(list(grp))) for ch, grp in itertools.groupby(inp_str)]
+        out_str = "".join([grp[0] if grp[1] == 1 else grp[0] + '{' + str(grp[1]) + '}' for grp in ch_grps])
+        return out_str
 
     @classmethod
     def write_swing(cls, r):
-        TimeMeasure.set("skip_me")
-
         start_pos, end_pos = r.span()
         frames_to_write = min(end_pos - start_pos, cls.MAX_CLIP_SZ)
-        frames_to_skip = len(cls.frames_buffer) - frames_to_write
-        TimeMeasure.set("write-swing - 1 ")
+        frames_to_skip = len(cls.frames_descr_buffer) - frames_to_write
 
         for i in range(frames_to_skip):
-            cls.frames_buffer.popleft()
-        TimeMeasure.set("write-swing - 2 ")
+            cls.frames_descr_buffer.popleft()
 
         out_file_name = f"{FrameProcessor.SWING_CLIP_PREFIX}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"
-        TimeMeasure.set("write-swing - 3 ")
 
         out_fs = WriteStream(out_file_name, fps=5)
         for i in range(frames_to_write):
-            out_frame = cls.frames_buffer.popleft()
+            out_frame = cls.frames_descr_buffer.popleft()[1]
             out_fs.write(out_frame)
         del out_fs
 
-        logging.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
+        log_state.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
         print(f"swing clip written: {out_file_name=}")
         return out_file_name
 
     @classmethod
     def reset(cls):
-        cls.status_history = ''
-        cls.frames_buffer.clear()
+        # cls.status_history = ''
+        cls.frames_descr_buffer.clear()
 
+
+# -------------------------
 
 def test_roi():
     input_fs = FrameStream("video/out2.avi")
