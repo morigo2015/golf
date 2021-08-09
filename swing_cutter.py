@@ -9,7 +9,7 @@ import cv2 as cv
 import numpy as np
 from playsound import playsound
 
-from my_util import Util, FrameStream, WriteStream
+from my_util import Util, FrameStream, WriteStream, Colours
 from timer import TimeMeasure
 
 # log_zone = logging.getLogger('log_zone')
@@ -351,10 +351,15 @@ class History:
         for i in range(frames_to_write):
             frame_state, out_frame = cls.frames_descr_buffer.popleft()
             if True:  # change to mode on/off later
-                cv.putText(out_frame, f"{frame_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
-                x,y,w,h = 50, 200, 500, 50
-                cv.rectangle(out_frame, (x, y), (x + w, y + h), (0, 0, 0), -1)
-                cv.putText(out_frame, f"{cls.squeeze_states_string(r.string)}", (x, y), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1)
+                cv.putText(out_frame, f"{frame_state}", (0, 50), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+                found_string = f"{cls.squeeze_states_string(r.string)}"
+                found_string = found_string[-40:]  # cut long string to last 40 symbols
+                font_scale = 0.5
+                thickness = 1
+                text_size = cv.getTextSize(found_string, cv.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                x, y, w, h = 50, 20, int(text_size[0][0]), int(text_size[0][1])
+                cv.rectangle(out_frame, (x, y), (x + w, y - h), Colours.BGR_BLACK, -1)
+                cv.putText(out_frame, found_string, (x, y), cv.FONT_HERSHEY_SIMPLEX, font_scale, Colours.BGR_WHITE, thickness)
             out_fs.write(out_frame)
         del out_fs
 
