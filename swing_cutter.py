@@ -349,7 +349,12 @@ class History:
 
         out_fs = WriteStream(out_file_name, fps=5)
         for i in range(frames_to_write):
-            out_frame = cls.frames_descr_buffer.popleft()[1]
+            frame_state, out_frame = cls.frames_descr_buffer.popleft()
+            if True:  # change to mode on/off later
+                cv.putText(out_frame, f"{frame_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+                x,y,w,h = 50, 200, 500, 50
+                cv.rectangle(out_frame, (x, y), (x + w, y + h), (0, 0, 0), -1)
+                cv.putText(out_frame, f"{cls.squeeze_states_string(r.string)}", (x, y), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1)
             out_fs.write(out_frame)
         del out_fs
 
