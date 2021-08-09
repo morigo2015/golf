@@ -128,7 +128,7 @@ ROI_ = TypeVar('ROI_', ROI, type(None))
 
 class StartZone:
     BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE) // 2 * 2 + 1)  # must be odd
-    MAX_BALL_SIZE: int = int(25 * FrameProcessor.INPUT_SCALE)
+    MAX_BALL_SIZE: int = int(20 * FrameProcessor.INPUT_SCALE)
     MIN_BALL_AREA_RATIO: float = 0.2  # min ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_BALL_AREA_RATIO: int = 4  # max ration of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_MATCH_RATE: float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
