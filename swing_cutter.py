@@ -40,7 +40,7 @@ def dummy_func():
 
 class History:
     FRAME_BUFF_SZ: int = 300
-    MAX_CLIP_SZ: int = 150
+    MAX_CLIP_SZ: int = 100
     frames_descr_buffer: Deque = deque(maxlen=FRAME_BUFF_SZ)
     last_swing_info = None  # ( file_name, state_string_squeezed ) for last written swing
 
@@ -74,20 +74,20 @@ class History:
             cls.frames_descr_buffer.popleft()
 
         out_file_name = f"{FrameProcessor.SWING_CLIP_PREFIX}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"
-        found_string = f"{cls.squeeze_string(r.string)}"[-40:]  # squeeze and cut to last 40 symbols
+        squeezed_state_history = f"{cls.squeeze_string(r.string)}"[-40:]  # squeeze and cut to last 40 symbols
 
         out_fs = WriteStream(out_file_name, fps=5)
         for i in range(frames_to_write):
             frame_state, out_frame = cls.frames_descr_buffer.popleft()
             if True:  # change to mode on/off later
                 cv.putText(out_frame, f"{frame_state}", (0, 50), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
-                Util.put_text_backgrounded(out_frame, found_string, (50, 20), Colours.BGR_GREEN, Colours.BGR_WHITE, scale=0.5, thickness=1)
+                Util.put_text_backgrounded(out_frame, squeezed_state_history, (50, 20), Colours.BGR_GREEN, Colours.BGR_WHITE, scale=0.5, thickness=1)
             out_fs.write(out_frame)
         del out_fs
 
-        cls.last_swing_info = (out_file_name, found_string)  # to use in draw for debugging
-        log_state.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
-        print(f"swing clip written: {out_file_name=}")
+        cls.last_swing_info = (out_file_name, squeezed_state_history)  # to use in draw for debugging
+        log_state.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=} {squeezed_state_history=}")
+        print(f"swing clip written: {out_file_name=}  history={squeezed_state_history}")
         return out_file_name
 
     @classmethod
@@ -121,7 +121,6 @@ class FrameProcessor:
                 return frame
 
         start_zone_state = self.start_zone.get_current_state(frame)
-
         History.save_state(start_zone_state, frame)
 
         search_obj = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string())  # B{7}[MB]*E{7}$
