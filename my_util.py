@@ -154,104 +154,108 @@ class Util:
         cv.rectangle(frame, (xy[0], xy[1] + 4*thickness), (xy[0] + w, xy[1] - h - thickness), back_colour, -1)
         cv.putText(frame, text, xy, font, scale, fore_colour, thickness)
 
-
-class AsyncVideoStream:
-    DELAY_EMPTY = 0.001  # delay when queue is full (in sec)
-    DELAY_FULL = 0.001  # delay when queue is empty (in sec)
-
-    def __init__(self, handle, queue_size=50, show_qsize=True):
-        # initialize the file video stream along with the boolean used to indicate if the thread should be stopped or not
-        self.stream = handle  # cv2.VideoCapture(path)
-        self.queue_size = queue_size
-        self.show_qsize = show_qsize
-        self.stopped = False
-
-        # initialize the queue used to store frames read from the video file
-        self.Q = Queue(maxsize=queue_size)
-        self.dropped_cnt = 0
-        self.read_frames_cnt = 0
-
-    def update(self):
-        # main procedure for reading-thread
-        while True:
-            # to stop the reading-thread,  self.stooped will be set in main thread
-            if self.stopped:
-                logging.debug(f'update: stopped')
-                return
-
-            (grabbed, frame) = self.stream.read()
-            self.read_frames_cnt += 1
-
-            if not grabbed:
-                logging.debug('not grabbed - stream is finished')
-                self.stop()
-                return
-
-            try:
-                self.Q.put(frame, block=False)
-            except Full:
-                # print('q full - last frame is dropped!!! ')
-                self.dropped_cnt += 1
-                # logging.debug(f"update: {self.dropped_cnt} ")
-                continue  # drop this frame not ever try to save it in AsyncVideoStream
-
-    def read(self):
-        if self.stopped:
-            return False, None
-        while True:
-            try:
-                frame = self.Q.get(block=False)
-                if self.show_qsize:
-                    # display the size of the queue on the frame
-                    qsz = self.qsize()  # (current size, max size)
-                    cv.putText(frame, f"Queue: {qsz[0]}/{qsz[1]} Dropped:{self.dropped_cnt}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                return True, frame
-            except Empty:
-                pass
-                # logging.debug('q empty - lets sleep awhile')
-                # time.sleep(self.DELAY_EMPTY)  # we are in main thread now and there is nothing to do yet
-            if self.stopped:
-                return False, None
-
-    def re_init(self, handle):
-        # reinit after input stream has been broken and restored
-        if handle:
-            self.stream = handle
-        self.stopped = False
-        self.start()
-
-    def clear(self):
-        with self.Q.mutex:
-            self.Q.queue.clear()
-        logging.debug(f"AsyncVideoStream.clear:: queue is cleared. qsize = {self.qsize()}")
-        # while not self.Q.empty():
-        #     try:
-        #         self.Q.get(False)
-        #     except Empty:
-        #         continue
-        #     self.Q.task_done()
-
-    def start(self):
-        # start a thread to read frames from the file video stream
-        t = Thread(target=self.update, args=())
-        t.daemon = True
-        t.start()
-        return self
-
-    def qsize(self):
-        return self.Q.qsize(), self.queue_size - 1
-
-    def more(self):
-        # return True if there are still frames in the queue
-        return self.Q.qsize() > 0
-
-    def stop(self):
-        # indicate that the thread should be stopped
-        self.stopped = True
-        logging.debug('stop is called')
+    @staticmethod
+    def move_window_horiz(window_name, direction:str): # right,left
+        pass
 
 
 class FrameStream:
+    class AsyncVideoStream:
+        DELAY_EMPTY = 0.001  # delay when queue is full (in sec)
+        DELAY_FULL = 0.001  # delay when queue is empty (in sec)
+
+        def __init__(self, handle, queue_size=50, show_qsize=True):
+            # initialize the file video stream along with the boolean used to indicate if the thread should be stopped or not
+            self.stream = handle  # cv2.VideoCapture(path)
+            self.queue_size = queue_size
+            self.show_qsize = show_qsize
+            self.stopped = False
+
+            # initialize the queue used to store frames read from the video file
+            self.Q = Queue(maxsize=queue_size)
+            self.dropped_cnt = 0
+            self.read_frames_cnt = 0
+
+        def update(self):
+            # main procedure for reading-thread
+            while True:
+                # to stop the reading-thread,  self.stooped will be set in main thread
+                if self.stopped:
+                    logging.debug(f'update: stopped')
+                    return
+
+                (grabbed, frame) = self.stream.read()
+                self.read_frames_cnt += 1
+
+                if not grabbed:
+                    logging.debug('not grabbed - stream is finished')
+                    self.stop()
+                    return
+
+                try:
+                    self.Q.put(frame, block=False)
+                except Full:
+                    # print('q full - last frame is dropped!!! ')
+                    self.dropped_cnt += 1
+                    # logging.debug(f"update: {self.dropped_cnt} ")
+                    continue  # drop this frame not ever try to save it in AsyncVideoStream
+
+        def read(self):
+            if self.stopped:
+                return False, None
+            while True:
+                try:
+                    frame = self.Q.get(block=False)
+                    if self.show_qsize:
+                        # display the size of the queue on the frame
+                        qsz = self.qsize()  # (current size, max size)
+                        cv.putText(frame, f"Queue: {qsz[0]}/{qsz[1]} Dropped:{self.dropped_cnt}", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0),
+                                   2)
+                    return True, frame
+                except Empty:
+                    pass
+                    # logging.debug('q empty - lets sleep awhile')
+                    # time.sleep(self.DELAY_EMPTY)  # we are in main thread now and there is nothing to do yet
+                if self.stopped:
+                    return False, None
+
+        def re_init(self, handle):
+            # reinit after input stream has been broken and restored
+            if handle:
+                self.stream = handle
+            self.stopped = False
+            self.start()
+
+        def clear(self):
+            with self.Q.mutex:
+                self.Q.queue.clear()
+            logging.debug(f"AsyncVideoStream.clear:: queue is cleared. qsize = {self.qsize()}")
+            # while not self.Q.empty():
+            #     try:
+            #         self.Q.get(False)
+            #     except Empty:
+            #         continue
+            #     self.Q.task_done()
+
+        def start(self):
+            # start a thread to read frames from the file video stream
+            t = Thread(target=self.update, args=())
+            t.daemon = True
+            t.start()
+            return self
+
+        def qsize(self):
+            return self.Q.qsize(), self.queue_size - 1
+
+        def more(self):
+            # return True if there are still frames in the queue
+            return self.Q.qsize() > 0
+
+        def stop(self):
+            # indicate that the thread should be stopped
+            self.stopped = True
+            logging.debug('stop is called')
+
     def __init__(self, source_path, show_qsize=True):
         self.path = source_path
         self.frame_cnt = 0
@@ -267,7 +271,7 @@ class FrameStream:
             self.mode = 'rtsp'
             self.async_mode = True
             self.cap = cv.VideoCapture(source_path)
-            self.async_mgr = AsyncVideoStream(self.cap, show_qsize=show_qsize)
+            self.async_mgr = self.AsyncVideoStream(self.cap, show_qsize=show_qsize)
             self.async_mgr.start()
             # time.sleep(1.0)  # to fill queue by frames
         else:
