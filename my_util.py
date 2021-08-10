@@ -151,11 +151,11 @@ class Util:
                               font=cv.FONT_HERSHEY_SIMPLEX, scale=1, thickness=1):
         text_size = cv.getTextSize(text, font, scale, thickness)
         w, h = int(text_size[0][0]), int(text_size[0][1])
-        cv.rectangle(frame, (xy[0], xy[1] + 4*thickness), (xy[0] + w, xy[1] - h - thickness), back_colour, -1)
+        cv.rectangle(frame, (xy[0], xy[1] + 4 * thickness), (xy[0] + w, xy[1] - h - thickness), back_colour, -1)
         cv.putText(frame, text, xy, font, scale, fore_colour, thickness)
 
     @staticmethod
-    def move_window_horiz(window_name, direction:str): # right,left
+    def move_window_horiz(window_name, direction: str):  # right,left
         pass
 
 
@@ -344,6 +344,47 @@ class WriteStream:
 
 # -------------------------------------------------------------------------------------------------------------
 
+def test_move_window():
+    win_name = "tst win"
+    window = cv.namedWindow(win_name, cv.WINDOW_NORMAL)  # cv.WINDOW_FULLSCREEN ) #)
+    frame = np.ones((100, 200), np.uint8)
+    cv.imshow(win_name, frame)
+    print(f"{cv.getWindowImageRect(win_name)=}")
+    # print(f"{cv.getWindowProperty(win_name,cv.WND_PROP_FULLSCREEN)=}")
+    ch = cv.waitKey(0)
+    # cv.setWindowProperty(win_name, cv.WND_PROP_FULLSCREEN, 1)
+    cv.setWindowProperty(win_name, cv.WND_PROP_TOPMOST, 1)
+    # print(f"{cv.getWindowImageRect(win_name)=}")
+    print(f"{cv.getWindowProperty(win_name,cv.WND_PROP_TOPMOST)=}")
+    ch = cv.waitKey(0)
+
+    while True:
+        ch = cv.waitKey(1)
+        if ch==ord('q'):
+            break
+        x,y,w,h = cv.getWindowImageRect(win_name)
+        # print(f"before move: {cv.getWindowImageRect(win_name)=}")
+        if ch==ord('r'):
+            cv.moveWindow(win_name,999999,0)
+        if ch==ord('l'):
+            cv.moveWindow(win_name, -999999,0)
+        if ch==ord('u'):
+            cv.moveWindow(win_name,0,-999999)
+        if ch==ord('d'):
+            cv.moveWindow(win_name, 0,999999)
+        # print(f"after: {cv.getWindowImageRect(win_name)=}")
+        print(f"{cv.getWindowProperty(win_name,cv.WND_PROP_TOPMOST)=}")
+        is_visible = cv.getWindowProperty(win_name,cv.WND_PROP_TOPMOST)
+        if not is_visible:
+            cv.setWindowProperty(win_name, cv.WND_PROP_TOPMOST, 1.0)
+        print(f"{cv.getWindowProperty(win_name,cv.WND_PROP_TOPMOST)=}, {cv.getWindowProperty(win_name,cv.WND_PROP_VISIBLE)=} ")
+
+    # while True:
+    #     ch = cv.waitKey(0)
+    #     if ch == ord('q'):
+    #         break
+    #     if ch == ord('r'):
+    #         print("right")
 
 def test_async_read():
     logging.basicConfig(filename='debug_test_async.log', level=logging.DEBUG)
@@ -384,7 +425,8 @@ def test_async_read():
 
 def main():
     # print(f"{Util.dist((100, 100), (200, 200))}")
-    test_async_read()
+    # test_async_read()
+    test_move_window()
 
 
 if __name__ == '__main__':

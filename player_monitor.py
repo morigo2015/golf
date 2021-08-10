@@ -30,6 +30,7 @@ class Player:
     FRAME_MODE_INITIAL = False
     ZONE_DRAW_INITIAL = True
     WIN_NAME = "Swing Player"
+    WIN_XY = (-9999, 0)  # move to left
 
     def __init__(self):
         self.frame_mode = Player.FRAME_MODE_INITIAL
@@ -38,6 +39,8 @@ class Player:
         self.input_fs = None
         self.delay = 25
         cv.namedWindow(Player.WIN_NAME)
+        cv.setWindowProperty(Player.WIN_NAME, cv.WND_PROP_FULLSCREEN, 1.0)
+        cv.moveWindow(Player.WIN_NAME, Player.WIN_XY[0], Player.WIN_XY[1])
 
     def play(self, input_source: str, delay=1):
 

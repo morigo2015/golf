@@ -81,11 +81,11 @@ class History:
             frame_state, out_frame = cls.frames_descr_buffer.popleft()
             if True:  # change to mode on/off later
                 cv.putText(out_frame, f"{frame_state}", (0, 50), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
-                Util.put_text_backgrounded(out_frame, squeezed_state_history, (50, 20), Colours.BGR_GREEN, Colours.BGR_WHITE, scale=0.5, thickness=1)
+                # Util.put_text_backgrounded(out_frame, squeezed_state_history, (50, 20), Colours.BGR_GREEN, Colours.BGR_WHITE, scale=0.5, thickness=1)
             out_fs.write(out_frame)
         del out_fs
 
-        cls.last_swing_info = (out_file_name, squeezed_state_history)  # to use in draw for debugging
+        # cls.last_swing_info = (out_file_name, squeezed_state_history)  # to use in draw for debugging
         log_state.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=} {squeezed_state_history=}")
         print(f"swing clip written: {out_file_name=}  history={squeezed_state_history}")
         return out_file_name
