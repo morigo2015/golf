@@ -10,7 +10,7 @@ import numpy as np
 from playsound import playsound
 
 from my_util import Util, FrameStream, WriteStream, Colours
-from timer import TimeMeasure
+# from timer import TimeMeasure
 
 # log_zone = logging.getLogger('log_zone')
 # log_state = logging.getLogger('log_state')
@@ -36,6 +36,64 @@ str_ = TypeVar('str_', str, type(None))
 
 def dummy_func():
     pass
+
+
+class History:
+    FRAME_BUFF_SZ: int = 300
+    MAX_CLIP_SZ: int = 150
+    frames_descr_buffer: Deque = deque(maxlen=FRAME_BUFF_SZ)
+    last_swing_info = None  # ( file_name, state_string_squeezed ) for last written swing
+
+    @classmethod
+    def repr(cls):
+        return f"len = {len(cls.frames_descr_buffer)} history={cls.squeeze_string(cls.states_string())}"
+
+    @classmethod
+    def save_state(cls, state: str, frame: np.ndarray):
+        # cls.states_string += state
+        cls.frames_descr_buffer.append((state, frame.copy()))
+        log_state.debug(f"save_state({state} History: {cls.repr()}")
+
+    @classmethod
+    def states_string(cls):
+        return "".join([d[0] for d in cls.frames_descr_buffer])
+
+    @staticmethod
+    def squeeze_string(inp_str):
+        ch_grps = [(ch, len(list(grp))) for ch, grp in itertools.groupby(inp_str)]
+        out_str = "".join([grp[0] if grp[1] == 1 else grp[0] + '{' + str(grp[1]) + '}' for grp in ch_grps])
+        return out_str
+
+    @classmethod
+    def write_swing(cls, r):
+        start_pos, end_pos = r.span()
+        frames_to_write = min(end_pos - start_pos, cls.MAX_CLIP_SZ)
+        frames_to_skip = len(cls.frames_descr_buffer) - frames_to_write
+
+        for i in range(frames_to_skip):
+            cls.frames_descr_buffer.popleft()
+
+        out_file_name = f"{FrameProcessor.SWING_CLIP_PREFIX}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"
+        found_string = f"{cls.squeeze_string(r.string)}"[-40:]  # squeeze and cut to last 40 symbols
+
+        out_fs = WriteStream(out_file_name, fps=5)
+        for i in range(frames_to_write):
+            frame_state, out_frame = cls.frames_descr_buffer.popleft()
+            if True:  # change to mode on/off later
+                cv.putText(out_frame, f"{frame_state}", (0, 50), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+                Util.put_text_backgrounded(out_frame, found_string, (50, 20), Colours.BGR_GREEN, Colours.BGR_WHITE, scale=0.5, thickness=1)
+            out_fs.write(out_frame)
+        del out_fs
+
+        cls.last_swing_info = (out_file_name, found_string)  # to use in draw for debugging
+        log_state.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
+        print(f"swing clip written: {out_file_name=}")
+        return out_file_name
+
+    @classmethod
+    def reset(cls):
+        # cls.status_history = ''
+        cls.frames_descr_buffer.clear()
 
 
 class FrameProcessor:
@@ -66,10 +124,10 @@ class FrameProcessor:
 
         History.save_state(start_zone_state, frame)
 
-        r = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string())  # B{7}[MB]*E{7}$
+        search_obj = re.search('B{7}B*[MB]{0,7}E{15}$', History.states_string())  # B{7}[MB]*E{7}$
 
-        if r:
-            History.write_swing(r)
+        if search_obj:
+            History.write_swing(search_obj)
             playsound('sound/GolfSwing2.mp3')
             History.reset()
             FrameProcessor.swing_cnt += 1
@@ -302,6 +360,10 @@ class StartZone:
             cv.drawMarker(frame, self.click_xy, (0, 0, 255), cv.MARKER_CROSS, 20, 1)
         # # cv.drawContours(frame, [StartArea.contour], 0, (0, 0, 255), 3)
         cv.putText(frame, f"{self.zone_state}", (50, 100), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+        # if History.last_swing_info:
+        #     Util.put_text_backgrounded(frame, f"last swing: {History.last_swing_info[0]} {History.last_swing_info[1]}",
+        #                                (50, 20), Colours.BGR_GREEN, Colours.BGR_WHITE, scale=0.5, thickness=1)
+
         return frame
 
     def load(self):
@@ -309,68 +371,6 @@ class StartZone:
 
     def save(self):
         pass
-
-
-class History:
-    FRAME_BUFF_SZ: int = 300
-    MAX_CLIP_SZ: int = 150
-    frames_descr_buffer: Deque = deque(maxlen=FRAME_BUFF_SZ)
-
-    @classmethod
-    def repr(cls):
-        return f"len = {len(cls.frames_descr_buffer)} history={cls.squeeze_states_string(cls.states_string())}"
-
-    @classmethod
-    def save_state(cls, state: str, frame: np.ndarray):
-        # cls.states_string += state
-        cls.frames_descr_buffer.append((state, frame.copy()))
-        log_state.debug(f"save_state({state} History: {cls.repr()}")
-
-    @classmethod
-    def states_string(cls):
-        return "".join([d[0] for d in cls.frames_descr_buffer])
-
-    @staticmethod
-    def squeeze_states_string(inp_str):
-        ch_grps = [(ch, len(list(grp))) for ch, grp in itertools.groupby(inp_str)]
-        out_str = "".join([grp[0] if grp[1] == 1 else grp[0] + '{' + str(grp[1]) + '}' for grp in ch_grps])
-        return out_str
-
-    @classmethod
-    def write_swing(cls, r):
-        start_pos, end_pos = r.span()
-        frames_to_write = min(end_pos - start_pos, cls.MAX_CLIP_SZ)
-        frames_to_skip = len(cls.frames_descr_buffer) - frames_to_write
-
-        for i in range(frames_to_skip):
-            cls.frames_descr_buffer.popleft()
-
-        out_file_name = f"{FrameProcessor.SWING_CLIP_PREFIX}{datetime.datetime.now().strftime('%H:%M:%S')}.avi"
-
-        out_fs = WriteStream(out_file_name, fps=5)
-        for i in range(frames_to_write):
-            frame_state, out_frame = cls.frames_descr_buffer.popleft()
-            if True:  # change to mode on/off later
-                cv.putText(out_frame, f"{frame_state}", (0, 50), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
-                found_string = f"{cls.squeeze_states_string(r.string)}"
-                found_string = found_string[-40:]  # cut long string to last 40 symbols
-                font_scale = 0.5
-                thickness = 1
-                text_size = cv.getTextSize(found_string, cv.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                x, y, w, h = 50, 20, int(text_size[0][0]), int(text_size[0][1])
-                cv.rectangle(out_frame, (x, y), (x + w, y - h), Colours.BGR_BLACK, -1)
-                cv.putText(out_frame, found_string, (x, y), cv.FONT_HERSHEY_SIMPLEX, font_scale, Colours.BGR_WHITE, thickness)
-            out_fs.write(out_frame)
-        del out_fs
-
-        log_state.debug(f"swing clip written: {out_file_name=} {start_pos=} {end_pos=}")
-        print(f"swing clip written: {out_file_name=}")
-        return out_file_name
-
-    @classmethod
-    def reset(cls):
-        # cls.status_history = ''
-        cls.frames_descr_buffer.clear()
 
 
 # -------------------------

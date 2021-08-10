@@ -31,12 +31,13 @@ FRAME_MODE_INITIAL = False
 ZONE_DRAW_INITIAL = True
 DELAY = 1  # delay in normal 'g'-mode
 WIN_NAME = "Observer"
-
+WIN_XY = (600,200)
 
 def main():
     frame_mode = FRAME_MODE_INITIAL
     zone_draw_mode = ZONE_DRAW_INITIAL  # True - draw active zone (corners_lst) on all images
     cv.namedWindow(WIN_NAME)
+    cv.moveWindow(WIN_NAME,WIN_XY[0],WIN_XY[1])
     frame_proc = FrameProcessor(win_name=WIN_NAME)
 
     input_fs = FrameStream(INPUT_SOURCE)
