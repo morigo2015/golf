@@ -176,7 +176,7 @@ class StartZone:
     BLUR_LEVEL: int = int((7 * FrameProcessor.INPUT_SCALE) // 2 * 2 + 1)  # must be odd
     MAX_BALL_SIZE: int = int(20 * FrameProcessor.INPUT_SCALE)
     MIN_BALL_AREA_RATIO: float = 0.2  # min ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
-    MAX_BALL_AREA_RATIO: int = 4  # max ration of (ball candidate area) / (startzone ball area) for detecting as ball candidate
+    MAX_BALL_AREA_RATIO: int = 4  # max ratio of (ball candidate area) / (startzone ball area) for detecting as ball candidate
     MAX_MATCH_RATE: float = 0.5  # max (worst) rate for matching(startzone_ball, condidate_ball) for detecting as ball when 1 only contour found
     MAX_RECT_RATIO: float = 0.9  # max ratio of (bounding_rectangle(contour) / zone_roi_size) to be a candidate to ball in get_best_threshold
     ZONE_BALL_RATIO: int = 4  # size of start area in actually found balls (one side)
@@ -191,6 +191,7 @@ class StartZone:
         self.ball_roi: ROI_ = None
         self.ball_contour: Ndarray_ = None  # ball which is used to calibrate start zone
         self.ball_area: float_ = None
+        self.ball_size = None
         self.thresh_val: float_ = None  # threshold is set to best fit for start zone at the moment of click_xy
         self.zone_roi: ROI_ = None
         self.zone_state: str_ = None
@@ -203,7 +204,7 @@ class StartZone:
 
     def __zone_reset(self) -> None:
         self.click_xy, self.ball_contour, self.click_roi, self.click_roi_img = [None] * 4
-        self.thresh_val, self.zone_roi, self.ball_roi, self.ball_area, self.zone_state = [None] * 5
+        self.thresh_val, self.zone_roi, self.ball_roi, self.ball_area, self.ball_size, self.zone_state = [None] * 6
         log_zone.debug("start zone reset")
 
     def __preprocess_image(self, roi_img: np.ndarray, roi_name: str = "preprocess image") -> np.ndarray:
@@ -218,7 +219,7 @@ class StartZone:
 
     def find_start_zone(self, frame: np.ndarray) -> bool:
         # try to set up Start Zone (ball, border):
-        # 4)           -->   zone_roi (click_xy.center; size = n * ball_size)
+        # 4)           -->   zone_roi (click_xy.center; size = n * self.ball_size)
         # return True if ok (found and set up), else - False
         if not self.click_xy:  # ball was not clicked yet
             return False
@@ -230,36 +231,12 @@ class StartZone:
 
         self.ball_area = cv.contourArea(self.ball_contour)
         self.ball_roi = ROI(frame.shape, contour=self.ball_contour)
-        ball_size = max(self.ball_roi.w, self.ball_roi.h)
-        self.zone_roi = ROI(frame.shape, self.click_roi.center_xy(), ball_size * self.ZONE_BALL_RATIO)
+        self.ball_size = max(self.ball_roi.w, self.ball_roi.h)
+        self.zone_roi = ROI(frame.shape, self.click_roi.center_xy(), self.ball_size * self.ZONE_BALL_RATIO)
         log_zone.debug(f"StartArea is set by ball position: {self.zone_roi=}  {self.thresh_val=} {cv.contourArea(self.ball_contour)=}")
         print(f"ball area: d (unscaled) = {max(self.ball_roi.w, self.ball_roi.h) / FrameProcessor.INPUT_SCALE:.0f}\
                 area (unscaled) = {self.ball_area / (FrameProcessor.INPUT_SCALE ** 2):.0f} {self.thresh_val=}")
         return True
-
-    def get_current_state(self, frame: np.ndarray) -> str:
-        # analyze current state of StartArea: 'E' - empty, 'B' - ball, 'M' - mess
-        roi_img = self.zone_roi.extract_img(frame)
-        gray = self.__preprocess_image(roi_img, "Stream")
-        _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
-        Util.show_img(thresh_img, "Stream:   thresh_img", 1)
-
-        contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-        contours = [cont for cont in contours if self.ball_area * self.MIN_BALL_AREA_RATIO < cv.contourArea(cont)]  # remove too small conts
-        if len(contours) == 0:
-            self.zone_state = 'E'
-            return self.zone_state
-
-        contours = [cont for cont in contours if cv.contourArea(cont) < self.ball_area * self.MAX_BALL_AREA_RATIO]  # remove too big conts
-        if len(contours) == 1 and not self.zone_roi.is_touched_to_contour(contours[0]):
-            match_rate = cv.matchShapes(contours[0], self.ball_contour, 1, 0)
-            # log_zone.debug(f" {match_rate=}")
-            if match_rate < self.MAX_MATCH_RATE:
-                self.zone_state = 'B'
-                return self.zone_state
-        self.zone_state = 'M'
-        return self.zone_state
 
     def __get_best_threshold(self, frame: np.ndarray, save_debug_thresh_images: bool) -> Tuple[float_, Ndarray_]:
         """ iterating over threshold levels to find one with max (but not as big as total roi) contour area
@@ -316,6 +293,30 @@ class StartZone:
                           f"{best_result['area']=}")
             Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
         return best_result["thresh"], best_result["contour"]
+
+    def get_current_state(self, frame: np.ndarray) -> str:
+        # analyze current state of StartArea: 'E' - empty, 'B' - ball, 'M' - mess
+        roi_img = self.zone_roi.extract_img(frame)
+        gray = self.__preprocess_image(roi_img, "Stream")
+        _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
+        Util.show_img(thresh_img, "Stream:   thresh_img", 1)
+
+        contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+        contours = [cont for cont in contours if self.ball_area * self.MIN_BALL_AREA_RATIO < cv.contourArea(cont)]  # remove too small conts
+        if len(contours) == 0:
+            self.zone_state = 'E'
+            return self.zone_state
+
+        contours = [cont for cont in contours if cv.contourArea(cont) < self.ball_area * self.MAX_BALL_AREA_RATIO]  # remove too big conts
+        if len(contours) == 1 and not self.zone_roi.is_touched_to_contour(contours[0]):
+            match_rate = cv.matchShapes(contours[0], self.ball_contour, 1, 0)
+            # log_zone.debug(f" {match_rate=}")
+            if match_rate < self.MAX_MATCH_RATE:
+                self.zone_state = 'B'
+                return self.zone_state
+        self.zone_state = 'M'
+        return self.zone_state
 
     def zone_is_found(self) -> bool:
         return False if self.zone_roi is None else True
