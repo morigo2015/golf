@@ -10,10 +10,11 @@ import numpy as np
 from playsound import playsound
 
 from my_util import Util, FrameStream, WriteStream, Colours
+
 # from timer import TimeMeasure
 
 # logging.basicConfig(filename='debug.log', level=logging.DEBUG)
-log_zone = Util.get_logger('_zone','debug_log_zone.log',logging.DEBUG,False)
+log_zone = Util.get_logger('_zone', 'debug_log_zone.log', logging.DEBUG, False)
 log_state = Util.get_logger('_state', 'debug_log_state.log', logging.DEBUG, False)
 
 # type hints abbreviations since current version of Python doesn't support |None in hints
@@ -211,9 +212,6 @@ class StartZone:
         # prepare roi image: bgr->gray->blur->open->close
         gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
         gray = cv.GaussianBlur(gray, (self.BLUR_LEVEL, self.BLUR_LEVEL), 0)
-        kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
-        gray = cv.morphologyEx(gray, cv.MORPH_OPEN, kernel)
-        gray = cv.morphologyEx(gray, cv.MORPH_CLOSE, kernel)
         # Util.show_img(gray, f"{roi_name}: preprocessed(gray)", 1)
         return gray
 
@@ -251,30 +249,49 @@ class StartZone:
         # 1) click_xy   -->   click_roi (click_xy.center; size = n * MAX_BALL_SIZE   -->
         self.click_roi = ROI(frame.shape, self.click_xy, self.CLICK_ZONE_SIZE)
         self.click_roi_img = self.click_roi.extract_img(frame)
+        cv.imwrite(f"images/click_roi_img.png", self.click_roi_img)
+
         # 2)           -->   preprocess(gray,blur,dilute)   -->
         self.click_roi_gray = self.__preprocess_image(self.click_roi_img, "Start zone")
+        Util.write_bw(f"images/click_roi_gray.png", self.click_roi_gray, f"frame {FrameProcessor.frame_cnt}")
         # 3)           -->   find best threshold (one contour of biggest but reasonable size), ball_size, thresh_val   -->
         level_results: List[Dict] = []
         for thresh in range(20, 255 - 20, 1):
             _, img = cv.threshold(self.click_roi_gray, thresh, 255, cv.THRESH_BINARY)
+            kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
+            img = cv.morphologyEx(img, cv.MORPH_OPEN, kernel)
+            img = cv.morphologyEx(img, cv.MORPH_CLOSE, kernel)
             # Util.show_img(img, f"thresh level = {thresh}", 1)
 
             contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
             # log_zone.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
             if save_debug_thresh_images:
-                Util.write_bw(f"images/thresh_{thresh}.png", img, f"frame {FrameProcessor.frame_cnt}: {thresh=}")
+                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=}")
 
             if len(contours) != 1:  # должен быть только один контур мяча. если несколько - меняем порог
+                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=}  contours({len(contours)})")
                 continue
             contour = contours[0]
             area = cv.contourArea(contour)
             x, y, w, h = cv.boundingRect(contour)
             if max(w, h) / max(self.click_roi_gray.shape) > self.MAX_RECT_RATIO:  # contour is as big as total image - so is useless
+                Util.write_bw(f"images/thresh_{thresh}.png", img,
+                              f"#{FrameProcessor.frame_cnt}: {thresh=} Big: {w=}{h=} max(shape)={max(self.click_roi_gray.shape)}")
                 continue
             if x == 0 or y == 0 or x + w == self.click_roi.w or y + h == self.click_roi.h:
+                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=} Touch: {x=} {y=} {w=} {h=}")
                 continue  # contour is touched to border
+            hull = cv.convexHull(contour, returnPoints=False)
+            defects = cv.convexityDefects(contour, hull)
+            max_defect_size = sorted(defects, key=lambda defect: defect[0][3], reverse=True)[0][0][3] if defects is not None else -1
+            if max_defect_size > 300:
+                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=} {max_defect_size=}")
+                continue
+
             result = {"thresh": thresh, "area": area, "contour": contour}
             level_results.append(result)
+            Util.write_bw(f"images/thresh_{thresh}.png", img,
+                          f"#{FrameProcessor.frame_cnt}: {thresh=} area={result['area']} def_size={max_defect_size}")
             log_zone.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {ROI(frame.shape, contour=contour)}  ")
 
         if len(level_results) == 0:  # no appropriate thresh found
@@ -299,6 +316,9 @@ class StartZone:
         roi_img = self.zone_roi.extract_img(frame)
         gray = self.__preprocess_image(roi_img, "Stream")
         _, thresh_img = cv.threshold(gray, self.thresh_val, 255, cv.THRESH_BINARY)
+        kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
+        thresh_img = cv.morphologyEx(thresh_img, cv.MORPH_OPEN, kernel)
+        thresh_img = cv.morphologyEx(thresh_img, cv.MORPH_CLOSE, kernel)
         Util.show_img(thresh_img, "Stream:   thresh_img", 1)
 
         contours, _ = cv.findContours(thresh_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
