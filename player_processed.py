@@ -17,11 +17,11 @@ from my_util import FrameStream, WriteStream
 from swing_cutter import FrameProcessor  # delete if not need external FrameProc (internal dummy stub will be used instead)
 
 # INPUT_SOURCE = 'rtsp://192.168.1.170:8080/h264_ulaw.sdp'
-INPUT_SOURCE = 'video/sunlight-1.mp4'  # 0.avi b2_cut fac-daylight-3 phone-range-2.mp4 sunlight-1.mp4 sunlight-ipcam-cannot-set-zone
+INPUT_SOURCE = 'video/sunlight-ipcam-cannot-set-zone.avi'  # 0.avi b2_cut fac-daylight-3 phone-range-2.mp4 sunlight-1.mp4 sunlight-ipcam-cannot-set-zone
 # INPUT_SOURCE = '/run/user/1000/gvfs/mtp:host=Xiaomi_Redmi_Note_8_Pro_fukvv87l8pbuo7eq/Internal shared storage/DCIM/Camera/tst2.mp4'
 
-NEED_TRANSPOSE: bool = True  # False
-NEED_FLIP: bool = NEED_TRANSPOSE
+NEED_VERTICAL: bool = True  # False
+NEED_FLIP: bool = NEED_VERTICAL
 
 OUT_FILE_NAME = 'video/out2.avi'
 WRITE_MODE = True if INPUT_SOURCE[0:4] == 'rtsp' else False
@@ -31,7 +31,7 @@ FRAME_MODE_INITIAL = False
 ZONE_DRAW_INITIAL = True
 DELAY = 1  # delay in normal 'g'-mode
 WIN_NAME = "Observer"
-WIN_XY = (9999,0) # move to right
+WIN_XY = (1150,0) # move to right
 
 def main():
     frame_mode = FRAME_MODE_INITIAL
@@ -49,8 +49,9 @@ def main():
         frame, frame_name, frame_cnt = input_fs.next_frame()
         if frame is None:
             break
-        if NEED_TRANSPOSE:
-            frame = cv.transpose(frame)
+        if NEED_VERTICAL:
+            if frame.shape[0] < frame.shape[1]:
+                frame = cv.transpose(frame)
         if NEED_FLIP:
             frame = cv.flip(frame, 1)
 
