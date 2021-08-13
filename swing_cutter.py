@@ -12,19 +12,9 @@ from playsound import playsound
 from my_util import Util, FrameStream, WriteStream, Colours
 # from timer import TimeMeasure
 
-# log_zone = logging.getLogger('log_zone')
-# log_state = logging.getLogger('log_state')
-
-
 # logging.basicConfig(filename='debug.log', level=logging.DEBUG)
-log_zone = logging.getLogger('_zone')
-log_zone.propagate = False
-log_zone.addHandler(logging.FileHandler('debug_log_zone.log'))
-log_zone.setLevel(logging.DEBUG)
-log_state = logging.getLogger('_state')
-log_state.propagate = False
-log_state.addHandler(logging.FileHandler('debug_log_state.log'))
-log_state.setLevel(logging.DEBUG)
+log_zone = Util.get_logger('_zone','debug_log_zone.log',logging.DEBUG,False)
+log_state = Util.get_logger('_state', 'debug_log_state.log', logging.DEBUG, False)
 
 # type hints abbreviations since current version of Python doesn't support |None in hints
 Point = Tuple[int, int]
@@ -150,9 +140,8 @@ class ROI:
         elif contour is not None:
             self.x, self.y, self.w, self.h = cv.boundingRect(contour)
         else:
-            logging.error(f"illegal params for ROI init: {frame_shape=} {point=} {roi_size=} {contour=}")
+            log_zone.error(f"illegal params for ROI init: {frame_shape=} {point=} {roi_size=} {contour=}")
         self.__trim_at_bounds(frame_shape)
-        # logging.debug(f"init: {self=}")
 
     def __trim_at_bounds(self, frame_shape):
         x_max, y_max = frame_shape[1], frame_shape[0]
@@ -388,7 +377,7 @@ def test_roi():
             roi_img = roi.extract_img(frame)
             Util.show_img(roi_img, "roi_img", 1)
             if start_zone.click_xy != old_click_xy:
-                logging.debug(f"{roi=}: {frame.shape=} {start_zone.click_xy=} {roi_sz=}")
+                log_zone.debug(f"{roi=}: {frame.shape=} {start_zone.click_xy=} {roi_sz=}")
             frame = roi.draw(frame)
             old_click_xy = start_zone.click_xy
 

@@ -155,9 +155,15 @@ class Util:
         cv.putText(frame, text, xy, font, scale, fore_colour, thickness)
 
     @staticmethod
-    def move_window_horiz(window_name, direction: str):  # right,left
-        pass
-
+    def get_logger(name, log_file, level=logging.DEBUG, propagate=False):
+        logger = logging.getLogger(name)
+        handler = logging.FileHandler(log_file)
+        formatter = logging.Formatter("[%(levelname)s] %(asctime)s, %(funcName)s %(message)s", "%Y-%m-%d %H:%M:%S")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(level)
+        logger.propagate = propagate
+        return logger
 
 class FrameStream:
     class AsyncVideoStream:
