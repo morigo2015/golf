@@ -258,40 +258,41 @@ class StartZone:
         # 3)           -->   find best threshold (one contour of biggest but reasonable size), ball_size, thresh_val   -->
         level_results: List[Dict] = []
         for thresh in range(20, 255 - 20, 1):
-            _, img = cv.threshold(self.click_roi_gray, thresh, 255, cv.THRESH_BINARY)
+            _, img_nomorphed = cv.threshold(self.click_roi_gray, thresh, 255, cv.THRESH_BINARY)
             kernel = np.ones((self.BLUR_LEVEL, self.BLUR_LEVEL), np.uint8)
-            img = cv.morphologyEx(img, cv.MORPH_OPEN, kernel)
+            img = cv.morphologyEx(img_nomorphed, cv.MORPH_OPEN, kernel)
             img = cv.morphologyEx(img, cv.MORPH_CLOSE, kernel)
             # Util.show_img(img, f"thresh level = {thresh}", 1)
 
             contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
             # log_zone.debug(f"get_best_threshold: iterating {thresh=} {len(contours)=} {[cv.contourArea(c) for c in contours]=}")
-            if save_debug_thresh_images:
-                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=}")
+            # Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=}")
 
             if len(contours) != 1:  # должен быть только один контур мяча. если несколько - меняем порог
-                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=}  contours({len(contours)})")
+                Util.write_bw(f"images/{thresh}_not1.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=}  contours({len(contours)})")
                 continue
             contour = contours[0]
             area = cv.contourArea(contour)
             x, y, w, h = cv.boundingRect(contour)
             if max(w, h) / max(self.click_roi_gray.shape) > self.MAX_RECT_RATIO:  # contour is as big as total image - so is useless
-                Util.write_bw(f"images/thresh_{thresh}.png", img,
+                Util.write_bw(f"images/{thresh}_big.png", img,
                               f"#{FrameProcessor.frame_cnt}: {thresh=} Big: {w=}{h=} max(shape)={max(self.click_roi_gray.shape)}")
                 continue
             if x == 0 or y == 0 or x + w == self.click_roi.w or y + h == self.click_roi.h:
-                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=} Touch: {x=} {y=} {w=} {h=}")
+                Util.write_bw(f"images/{thresh}_touch.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=} Touch: {x=} {y=} {w=} {h=}")
                 continue  # contour is touched to border
             hull = cv.convexHull(contour, returnPoints=False)
             defects = cv.convexityDefects(contour, hull)
             max_defect_size = sorted(defects, key=lambda defect: defect[0][3], reverse=True)[0][0][3] if defects is not None else -1
             if max_defect_size > self.MAX_DEFECT_SIZE:
-                Util.write_bw(f"images/thresh_{thresh}.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=} {max_defect_size=}")
+                Util.write_bw(f"images/{thresh}_defects.png", img, f"#{FrameProcessor.frame_cnt}: {thresh=} {max_defect_size=}")
                 continue
 
             result = {"thresh": thresh, "area": area, "contour": contour}
             level_results.append(result)
-            Util.write_bw(f"images/thresh_{thresh}.png", img,
+            Util.write_bw(f"images/{thresh}_thresh.png", img,
+                          f"#{FrameProcessor.frame_cnt}: {thresh=} area={result['area']} def_size={max_defect_size}")
+            Util.write_bw(f"images/{thresh}_nomorphed.png", img_nomorphed,
                           f"#{FrameProcessor.frame_cnt}: {thresh=} area={result['area']} def_size={max_defect_size}")
             log_zone.debug(f"get_best_thresh::: level result saved {result['thresh']=} {result['area']=} {ROI(frame.shape, contour=contour)}  ")
 
@@ -299,9 +300,11 @@ class StartZone:
             return None, None
         if len(level_results) == 1:  # return just the only found thresh
             best_result = level_results[0]
-        else:  # len(level_results) > 1:  return second best by area if possible
+        elif 1 < len(level_results) <= 5:  # len(level_results) in (1;5]  --  return second best by area if possible
             level_results = sorted(level_results, key=lambda res: res["area"], reverse=True)
             best_result = level_results[1]
+        else:  # len(level_results) > 5
+            best_result = self.get_optimized_thresh_level(level_results)
 
         otsu_thresh, otsu_img = cv.threshold(self.click_roi_gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
         log_zone.debug(f"{best_result['thresh']=} {best_result['area']=} otsu = {otsu_thresh}")
@@ -311,6 +314,46 @@ class StartZone:
                           f"{best_result['area']=}")
             Util.write_bw(f"images/otsu_{otsu_thresh}.png", otsu_img)
         return best_result["thresh"], best_result["contour"]
+
+    @staticmethod
+    def contour_intersect(cnt_ref, cnt_query):
+        # Contour is a list of points. Connect each point to the following point to get a line. If any of the lines intersect, then break
+        def ccw(A, B, C):
+            return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+
+        for ref_idx in range(len(cnt_ref) - 1):
+            # Create reference line_ref with point AB
+            A = cnt_ref[ref_idx][0]
+            B = cnt_ref[ref_idx + 1][0]
+            for query_idx in range(len(cnt_query) - 1):
+
+                # Create query line_query with point CD
+                C = cnt_query[query_idx][0]
+                D = cnt_query[query_idx + 1][0]
+
+                # Check if line intersect
+                if ccw(A, C, D) != ccw(B, C, D) and ccw(A, B, C) != ccw(A, B, D):
+                    # If true, break loop earlier
+                    return True
+        return False
+
+    def get_back_spot_area(self, level_res):
+        # return total area of all spots which are not include click_xy
+        _, img_thresh = cv.threshold(self.click_roi_gray, level_res['thresh'], 255, cv.THRESH_BINARY)
+        contours, _ = cv.findContours(img_thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        cont_areas = [cv.contourArea(cnt) for cnt in contours if not self.contour_intersect(cnt, level_res['contour'])]
+        return sum(cont_areas)
+
+    def get_optimized_thresh_level(self, level_results):
+        # level_results is ordered by thresh
+        back_spots = [(level_index, self.get_back_spot_area(level_results[level_index]))
+                      for level_index in range(0, int(len(level_results) * 0.3))]
+        min_spot_area = min(back_spots, key=lambda s: s[1])[1]
+        minimal_spots = [s for s in back_spots if s[1] == min_spot_area]
+        best_result_index = min(minimal_spots, key=lambda s: s[0])[0]
+        log_zone.debug(
+            f"get_optimized_thresh_level:: {len(level_results)=} {back_spots=} {best_result_index=} {level_results[best_result_index]['thresh']=}")
+        return level_results[best_result_index]
 
     def get_current_state(self, frame: np.ndarray) -> str:
         # analyze current state of StartArea: 'E' - empty, 'B' - ball, 'M' - mess
